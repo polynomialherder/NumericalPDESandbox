@@ -4,7 +4,7 @@ This is a sandbox for playing with concepts in numerical solution of partial dif
 
 It consists of the following modules
 
-- *simple_second_order.py* - a set of abstractions for solving a simple linear second order differential equation of the form `f(x) = u''(x)`
-- *sandbox.py* - a scratchpad for testing simple ideas
+- [](simple_second_order.py) - a set of abstractions for solving a simple linear second order differential equation of the form `f(x) = u''(x)`
+- [](sandbox.py) - a scratchpad for testing ideas
 
 This repository does not currently expose any APIs or UIs. I presently interact with it by doing `python -i script.py` (where `script.py` is one of the modules in this repository) which executes any toplevel code in `script.py` and loads all of the definitions into a Python interpreter session.
