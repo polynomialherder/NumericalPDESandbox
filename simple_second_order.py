@@ -1,52 +1,15 @@
+"""
+This module consists of abstractions for solving a simple linear second order differential equation of the form
+f(x) = u''(x). The methods implemented are based on the discussion in Finite Difference Methods for Ordinary and Partial
+Differential Equations by Randall Leveque, sections 2.1-2.10.
+"""
+
 import math
 
 from functools import partial, cached_property
-from math import cos
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import seaborn
-
-
-
-def derivative_plus(f):
-    h = 0.01
-    def derivative_(x):
-        return (f(x + h) - f(x))/h
-    return derivative_
-
-
-def derivative_minus(f):
-    h = 0.0001
-    def derivative_(x):
-        return (f(x) - f(x - h))/h
-    return derivative_
-
-def derivative_0(f):
-    def derivative_(x):
-        return 0.5 * (derivative_plus(f)(x) + derivative_minus(f)(x))
-    return derivative_
-
-def derivative_centered(f, h=0.1):
-    def derivative_(x):
-        return (1/h**2)*()
-
-
-def derivative_df(fn, differentiator_fn):
-    fnprime = differentiator_fn(fn)
-    fnprimeprime = differentiator_fn(fnprime)
-    fnprimeprimeprime = differentiator_fn(fnprimeprime)
-    x = np.array([1, 2, 3, 4, 5])
-    return pd.DataFrame(
-        {
-         "x": x,
-         "g(x)": np.apply_along_axis(fn, 0, x),
-         "g'(x)": np.apply_along_axis(fnprime, 0, x),
-         "g''(x)": np.apply_along_axis(fnprimeprime, 0, x),
-         "g'''(x)": np.apply_along_axis(fnprimeprimeprime, 0, x)
-        }
-    )
 
 
 class SimpleSecondOrderODE:
