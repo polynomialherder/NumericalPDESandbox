@@ -92,7 +92,7 @@ class SimpleSecondOrderODE:
         #       to its own method taking alpha/beta and F
         #       as parameters
         if self.alpha.boundary_type == BCType.DIRICHLET:
-            F[0] = F[0] - self.alpha*self.coef
+            F[0] = F[0] - self.alpha.value*self.coef
         else:
             # If the boundary condition is not Dirichlet, then it's
             # Neumann, so we include the boundary in our source function
@@ -100,7 +100,7 @@ class SimpleSecondOrderODE:
             F = np.insert(F, 0, self.alpha)
 
         if self.beta.boundary_type == BCType.DIRICHLET:
-            F[-1] = F[-1] - self.beta*self.coef
+            F[-1] = F[-1] - self.beta.value*self.coef
         else:
             F = np.insert(F, len(F), self.beta)
         return F
