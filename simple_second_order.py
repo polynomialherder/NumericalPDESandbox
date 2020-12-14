@@ -6,11 +6,35 @@ Differential Equations by Randall Leveque, sections 2.1-2.10.
 
 import math
 
+from enum import Enum
 from functools import partial, cached_property
 
 import matplotlib.pyplot as plt
 import numpy as np
 
+class BCType(Enum):
+
+    DIRICHLET = 1
+    NEUMANN = 2
+
+
+class BoundaryCondition:
+    """ A BoundaryCondition object contains the information necessary to apply
+        boundary conditions to the solution of the PDE -- namely, the boundary type,
+        which must be one of BCType.DIRICHLET or BCType.NEUMANN, and the value of
+        u(gamma) or u'(gamma) at the boundary where gamma is the boundary point and
+        u is the solution of the PDE.
+    """
+
+    def __init__(self, boundary_type, value):
+        expected_boundary_types = [BCType.DIRICHLET, BCType.NEUMANN]
+
+        if boundary_type not in expected_boundary_types:
+            error_str = "The boundary_type must be one of {expected_boundary_types}, got {boundary_type} instead."
+            raise Exception(error_str)
+
+        self.boundary_type = boundary_type
+        self.value = value
 
 class SimpleSecondOrderODE:
 
@@ -26,12 +50,22 @@ class SimpleSecondOrderODE:
         """
         self.h = h
         self.f = f
-        self.alpha = alpha
-        self.beta = beta
+        self.alpha = self.normalize_boundary_condition(alpha)
+        self.beta = self.normalize_boundary_condition(beta)
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.actual = actual
-        self.test_hs = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5]
+        self.test_hs = [1/1000, 1/500, 1/320, 1/250, 1/125, 1/100, 1/50, 1/30, 1/25, 1/20, 1/10, 1/5, 1/3]
+
+
+    @staticmethod
+    def normalize_boundary_condition(boundary_value):
+        if isinstance(boundary_value, BoundaryCondition):
+            return boundary_value
+        elif isinstance(boundary_value, (complex, float, int)):
+            return BoundaryCondition(BCType.DIRICHLET, boundary_value)
+        raise Exception("boundary_value must be either a BoundaryCondition object or a numeric type")
+
 
     @property
     def coef(self):
@@ -52,13 +86,31 @@ class SimpleSecondOrderODE:
             endpoint=False
         )
 
+    def apply_boundary_conditions_f(self, F):
+        # TODO: This approach violates DRY. The logic
+        #       inside each if/else block should be moved
+        #       to its own method taking alpha/beta and F
+        #       as parameters
+        if self.alpha.boundary_type == BCType.DIRICHLET:
+            F[0] = F[0] - self.alpha*self.coef
+        else:
+            # If the boundary condition is not Dirichlet, then it's
+            # Neumann, so we include the boundary in our source function
+            # per the discussion on pps. 31-32, section 2.12 in LeVeque
+            F = np.insert(F, 0, self.alpha)
+
+        if self.beta.boundary_type == BCType.DIRICHLET:
+            F[-1] = F[-1] - self.beta*self.coef
+        else:
+            F = np.insert(F, len(F), self.beta)
+        return F
+
     @property
     def F(self):
         """ Given an ODE/PDE AU = F, return the source term F
         """
         F = np.apply_along_axis(self.f, 0, self.mesh)
-        F[0] = F[0] - self.alpha*self.coef
-        F[-1] = F[-1] - self.beta*self.coef
+        F = self.apply_boundary_conditions_f(F)
         return F
 
 
@@ -96,7 +148,7 @@ class SimpleSecondOrderODE:
             Synonymous with the gte (global truncation error) method and likely more
             efficient
         """
-        return self.solution - self.apply_actual()
+        return self.A @ self.solution - self.F
 
 
     @property
@@ -128,6 +180,7 @@ class SimpleSecondOrderODE:
         return -(np.linalg.inv(self.A)) @ self.lte()
 
 
+    @property
     def A_inv(self):
         """ Invert our differential approximation operator.
         """
@@ -152,10 +205,19 @@ class SimpleSecondOrderODE:
         return norms
 
 
+    def check_consistency(self):
+        _2norms = []
+        for h in self.test_hs:
+            self.h = h
+            lte = self.lte()
+            _2norms.append(_2norm(eqn.h, lte))
+        return _2norms
+
+
     def plot_approximation(self):
         plt.plot(self.mesh, self.apply_actual(), label="Analytic Solution")
         plt.plot(self.mesh, self.solution, label="FD Approximation")
-        plt.title("Approximat")
+        plt.title("Approximate")
         plt.xlabel("x")
         plt.ylabel("U(x)")
         plt.legend()
@@ -166,11 +228,12 @@ class SimpleSecondOrderODE:
         for h in self.test_hs:
             eqn.h = h
             errors.append(_2norm(eqn.h, eqn.gte()))
-        errors = np.log(errors)
-        hs = np.log(self.test_hs)
-        plt.plot(hs, errors)
+        errors = (abs(np.array(errors)))
+        hs = (self.test_hs)
+        plt.loglog(hs, errors)
         plt.xlabel("h")
-        plt.ylabel("Global Truncation Error")
+        plt.ylabel("2-Norm of Global Truncation Error")
+        plt.title("Error vs h")
         plt.show()
 
 
@@ -180,9 +243,22 @@ def _2norm(h, vector):
     return math.sqrt(h * sum(abs(vector)**2))
 
 
+def rmse(actual, approximations):
+    return (sum((approximations - actual) ** 2) / len(actual)) ** (1/2)
+
+
+def l1_norm(actual, reference):
+    return (1/len(actual)) * sum(abs(actual - reference))
+
+
+def infinity_norm(actual, reference):
+    return max(abs(actual - reference))
+
+
 if __name__ == '__main__':
     # Function representing choice of f(x) (as in the steady-state PDE u''(x) = f(x))
-    f = lambda x: (np.cos(x)) ** 2
+    f = lambda x: 2*(np.cos(x) ** 2 - np.sin(x) ** 2)
     # Function representing an analytic solution for u of the equation u'' = f(x)
-    actual = lambda x: (1/80)*(20*x**2 + x*(191 + np.cos(20)) - 10*np.cos(2*x) + 90)
-    eqn = SimpleSecondOrderODE(f, h=0.001, lower_bound=-10, upper_bound=10, actual=actual, alpha=0, beta=50)
+    #actual = lambda x: (1/80)*(20*x**2 + x*(191 + np.cos(20)) - 10*np.cos(2*x) + 90)
+    actual = lambda x: np.sin(x) ** 2
+    eqn = SimpleSecondOrderODE(f, h=0.001, lower_bound=-1, upper_bound=1, actual=actual, alpha=(np.sin(-1))**2, beta=(np.sin(1))**2)
