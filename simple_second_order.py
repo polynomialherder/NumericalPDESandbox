@@ -13,6 +13,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class BCType(Enum):
+    """ An enum value representing either a Dirichlet boundary condition
+        or a Neumann boundary condition
+    """
 
     DIRICHLET = 1
     NEUMANN = 2
@@ -36,6 +39,9 @@ class BoundaryCondition:
         self.boundary_type = boundary_type
         self.value = value
 
+    def __repr__(self):
+        return f"<BoundaryCondition {self.boundary_type} value:{self.value}>"
+
 class SimpleSecondOrderODE:
 
     def __init__(self, f, h=0.1,
@@ -47,6 +53,8 @@ class SimpleSecondOrderODE:
             f, transforms the problem into a linear equation AU = F where F = f(X)
             for a discretized domain X, and exposes methods for solving for U and
             analyzing errors given a known analytic solution (actual).
+
+            Supports Neumann and Dirichlet boundary conditions
         """
         self.h = h
         self.f = f
@@ -80,29 +88,15 @@ class SimpleSecondOrderODE:
             domain of our problem
         """
         return np.linspace(
-            self.lower_bound + self.h,
-            self.upper_bound,
+            self.lower_bound,
+            self.upper_bound + 2*self.h,
             self.rows,
             endpoint=False
         )
 
     def apply_boundary_conditions_f(self, F):
-        # TODO: This approach violates DRY. The logic
-        #       inside each if/else block should be moved
-        #       to its own method taking alpha/beta and F
-        #       as parameters
-        if self.alpha.boundary_type == BCType.DIRICHLET:
-            F[0] = F[0] - self.alpha.value*self.coef
-        else:
-            # If the boundary condition is not Dirichlet, then it's
-            # Neumann, so we include the boundary in our source function
-            # per the discussion on pps. 31-32, section 2.12 in LeVeque
-            F = np.insert(F, 0, self.alpha)
-
-        if self.beta.boundary_type == BCType.DIRICHLET:
-            F[-1] = F[-1] - self.beta.value*self.coef
-        else:
-            F = np.insert(F, len(F), self.beta)
+        F[0] = self.alpha.value
+        F[-2] = self.beta.value
         return F
 
     @property
@@ -122,7 +116,65 @@ class SimpleSecondOrderODE:
             The result must be an integer because we will be passing it to `np.full`
             which expects integer arguments
         """
-        return math.ceil((self.upper_bound - self.lower_bound) / self.h - 1)
+        return math.ceil((self.upper_bound - self.lower_bound) / self.h + 1)
+
+    def apply_boundary_conditions_A(self, A):
+        # Note that the last column of the penultimate row is 0 --
+        # this will be corrected
+        left_column = np.zeros(len(A))
+        left_column[0] = 1
+        right_column = np.zeros(len(A))
+        right_column[-1] = 1
+        A = np.column_stack((left_column, A, right_column))
+        # After the np.column_stack call A looks like
+        #
+        # | 1 -2  1 0 ...  0 0 0 |
+        # | 0  1 -2 1 ...  0 0 0 |
+        # |    ...    ... ... ...|
+        # | 0  0  0 0 ... 1 -2 1 |
+        #
+        # Create an array of zeros for the first and last rows
+        boundary = np.zeros(len(A[0]))
+        A = np.vstack(
+            (
+                boundary,
+                A,
+                boundary
+            )
+        )
+        # Now we have:
+        #
+        # | 0  0  0 0 ... 0  0 0 |
+        # | 1 -2  1 0 ...  0 0 0 |
+        # | 0  1 -2 1 ...  0 0 0 |
+        # |    ...    ... ... ...|
+        # | 0  0  0 0 ... 1 -2 1 |
+        # | 0  0  0 0 ... 0  0 0 |
+        #
+        # and so applying the boundary conditions to A is a matter of
+        # modifying the first and last rows
+        if self.alpha.boundary_type == BCType.DIRICHLET:
+            # If we have a Dirichlet boundary, then simply set the first
+            # elements of the first and last rows to h**2 since we'll be
+            # multiplying by h**2 inverse as the last step of building A
+            A[0][0] = self.h ** 2
+        else:
+            # If the BC is not Dirichlet, then it's Neumann, so we use a
+            # second order accurate one-sided approximation to the first
+            # derivative
+            A[0][0] = 3*self.h/2
+            A[0][1] = -2*self.h
+            A[0][2] = self.h/2
+
+        if self.beta.boundary_type == BCType.DIRICHLET:
+            A[-1][-2] = self.h**2
+        else:
+            # If the BC is not Dirichlet, then it's Neumann
+            A[-1][-3] = 3*self.h/2
+            A[-1][-2] = -2*self.h
+            A[-1][-1] = self.h/2
+
+        return A
 
 
     @property
@@ -131,9 +183,11 @@ class SimpleSecondOrderODE:
             difference approximation to the second derivative by summing three diagonal
             matrices
         """
-        A_ = np.diag(np.full(self.rows -1, 1), k=-1) + \
-            np.diag(np.full(self.rows, -2), k=0) + \
-            np.diag(np.full(self.rows - 1, 1), k=1)
+        A_ = np.diag(np.full(self.rows-3, 1), k=-1) + \
+             np.diag(np.full(self.rows-2, -2), k=0) + \
+             np.diag(np.full(self.rows-3, 1), k=1)
+
+        A_ = self.apply_boundary_conditions_A(A_)
         return self.coef * A_
 
 
@@ -216,7 +270,7 @@ class SimpleSecondOrderODE:
 
     def plot_approximation(self):
         plt.plot(self.mesh, self.apply_actual(), label="Analytic Solution")
-        plt.plot(self.mesh, self.solution, label="FD Approximation")
+        plt.plot(self.mesh, self.A @ self.solution, label="FD Approximation")
         plt.title("Approximate")
         plt.xlabel("x")
         plt.ylabel("U(x)")
@@ -257,8 +311,31 @@ def infinity_norm(actual, reference):
 
 if __name__ == '__main__':
     # Function representing choice of f(x) (as in the steady-state PDE u''(x) = f(x))
-    f = lambda x: 2*(np.cos(x) ** 2 - np.sin(x) ** 2)
+    f = lambda x: x ** 3
     # Function representing an analytic solution for u of the equation u'' = f(x)
-    #actual = lambda x: (1/80)*(20*x**2 + x*(191 + np.cos(20)) - 10*np.cos(2*x) + 90)
-    actual = lambda x: np.sin(x) ** 2
-    eqn = SimpleSecondOrderODE(f, h=0.001, lower_bound=-1, upper_bound=1, actual=actual, alpha=(np.sin(-1))**2, beta=(np.sin(1))**2)
+    u = lambda x: (1/20)*x*(x ** 4 + 399)
+    eqn = SimpleSecondOrderODE(
+        f,
+        h=0.1,
+        lower_bound=0,
+        upper_bound=1,
+        actual=u,
+        alpha=0,
+        beta=20
+    )
+
+    # Note that to pass a Dirichlet BC, you can pass either a number directly as above or
+    # a BoundaryCondition object with BCType.DIRICHLET
+    alpha_ = BoundaryCondition(BCType.DIRICHLET, 0)
+    beta_ = BoundaryCondition(BCType.NEUMANN, 20)
+    u_ = lambda x: (1/20)*x*(x ** 4 + 395)
+    eqn_ = SimpleSecondOrderODE(
+        f,
+        h=0.1,
+        lower_bound=0,
+        upper_bound=1,
+        actual=u_,
+        alpha=alpha_,
+        beta=beta_
+    )
+
