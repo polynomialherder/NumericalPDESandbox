@@ -1,225 +1,60 @@
-import math
-
-from functools import partial, cached_property
-from math import cos
-
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import seaborn
 
-
-
-def derivative_plus(f):
-    h = 0.01
-    def derivative_(x):
-        return (f(x + h) - f(x))/h
-    return derivative_
-
-
-def derivative_minus(f):
-    h = 0.0001
-    def derivative_(x):
-        return (f(x) - f(x - h))/h
-    return derivative_
-
-def derivative_0(f):
-    def derivative_(x):
-        return 0.5 * (derivative_plus(f)(x) + derivative_minus(f)(x))
-    return derivative_
-
-def derivative_centered(f, h=0.1):
-    def derivative_(x):
-        return (1/h**2)*()
-
-
-def derivative_df(fn, differentiator_fn):
-    fnprime = differentiator_fn(fn)
-    fnprimeprime = differentiator_fn(fnprime)
-    fnprimeprimeprime = differentiator_fn(fnprimeprime)
-    x = np.array([1, 2, 3, 4, 5])
-    return pd.DataFrame(
-        {
-         "x": x,
-         "g(x)": np.apply_along_axis(fn, 0, x),
-         "g'(x)": np.apply_along_axis(fnprime, 0, x),
-         "g''(x)": np.apply_along_axis(fnprimeprime, 0, x),
-         "g'''(x)": np.apply_along_axis(fnprimeprimeprime, 0, x)
-        }
-    )
-
-
-class SimpleSecondOrderODE:
-
-    def __init__(self, f, h=0.1,
-                 alpha=0, beta=50,
-                 lower_bound=0, upper_bound=1,
-                 actual=None
-    ):
-        """ Initialize a SimpleSecondOrderODE object. Given a source function
-            f, transforms the problem into a linear equation AU = F where F = f(X)
-            for a discretized domain X, and exposes methods for solving for U and
-            analyzing errors given a known analytic solution (actual).
-        """
-        self.h = h
-        self.f = f
-        self.alpha = alpha
-        self.beta = beta
-        self.lower_bound = lower_bound
-        self.upper_bound = upper_bound
-        self.actual = actual
-        self.test_hs = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5]
-
-    @property
-    def coef(self):
-        """ A constant representing the value 1/h^2
-        """
-        return 1/self.h**2
-
-
-    @property
-    def mesh(self):
-        """ Create an evenly spaced mesh of points representing the discretized
-            domain of our problem
-        """
-        return np.linspace(
-            self.lower_bound + self.h,
-            self.upper_bound,
-            self.rows,
-            endpoint=False
-        )
-
-    @property
-    def F(self):
-        """ Given an ODE/PDE AU = F, return the source term F
-        """
-        F = np.apply_along_axis(self.f, 0, self.mesh)
-        F[0] = F[0] - self.alpha*self.coef
-        F[-1] = F[-1] - self.beta*self.coef
-        return F
-
-
-    @property
-    def rows(self):
-        """ Compute the number of rows in the tridiagonal Toeplitz matrix A.
-            We coerce the result to be an integer using ceil instead of int because
-            floating point error occasionally results in strange values otherwise.
-            The result must be an integer because we will be passing it to `np.full`
-            which expects integer arguments
-        """
-        return math.ceil((self.upper_bound - self.lower_bound) / self.h - 1)
-
-
-    @property
-    def A(self):
-        """ Determine the tridiagonal Toeplitz matrix that determines our finite
-            difference approximation to the second derivative by summing three diagonal
-            matrices
-        """
-        A_ = np.diag(np.full(self.rows -1, 1), k=-1) + \
-            np.diag(np.full(self.rows, -2), k=0) + \
-            np.diag(np.full(self.rows - 1, 1), k=1)
-        return self.coef * A_
-
-
-    def apply_actual(self):
-        """ Apply the known solution to our mesh values
-        """
-        return np.apply_along_axis(self.actual, 0, self.mesh)
-
-
-    def residuals(self):
-        """ The signed difference between our approximation and the known solution
-            Synonymous with the gte (global truncation error) method and likely more
-            efficient
-        """
-        return self.solution - self.apply_actual()
-
-
-    @property
-    def solution(self):
-        return self.solve()
-
-
-    def solve(self):
-        """ Solve an ODE/PDE in the form AU = F for U
-        """
-        return np.linalg.solve(self.A, self.F)
-
-
-    def lte(self):
-        """ A method returning the local truncation error as defined by Leveque,
-            namely A*U_hat - F where A is our differential approximation operator,
-            U_hat is a vector of known solutions, and F is our source function.
-        """
-        u_hat = self.apply_actual()
-        AU_hat = self.A @ u_hat
-        return AU_hat - self.F
-
-
-    def gte(self):
-        """ The global truncation error as defined by Leveque, namely
-            -(A^{-1})T where T is the local truncation error. Synonymous
-            with the residuals method (which is likely more performant).
-        """
-        return -(np.linalg.inv(self.A)) @ self.lte()
-
-
-    def A_inv(self):
-        """ Invert our differential approximation operator.
-        """
-        return np.linalg.inv(self.A)
-
-
-    def check_stability(self):
-        """ Implements a check of a handful of 2-norms corresponding to reasonable values
-            of h as a quick check that they satisfy the following definition from Leveque:
-
-            Given a finite difference method for a linear BVP, the method is stable
-            if (A)^{-1} exists for all h sufficiently small, and if there is a constant C,
-            independent of h, such that ||A^{-1}|| <= C for all h < h_0
-        """
-        norms = []
-        prev = self.h
-        for h in self.test_hs:
-            self.h = h
-            two_norm = np.linalg.norm(self.A_inv, 2)
-            norms.append(two_norm)
-        self.h = prev
-        return norms
-
-
-    def plot_approximation(self):
-        plt.plot(self.mesh, self.apply_actual(), label="Analytic Solution")
-        plt.plot(self.mesh, self.solution, label="FD Approximation")
-        plt.title("Approximat")
-        plt.xlabel("x")
-        plt.ylabel("U(x)")
-        plt.legend()
-        plt.show()
-
-    def plot_h_vs_error(self):
-        errors = []
-        for h in self.test_hs:
-            eqn.h = h
-            errors.append(_2norm(eqn.h, eqn.gte()))
-        errors = np.log(errors)
-        hs = np.log(self.test_hs)
-        plt.plot(hs, errors)
-        plt.xlabel("h")
-        plt.ylabel("Global Truncation Error")
-        plt.show()
-
-
-def _2norm(h, vector):
-    """ Implements the 2-norm as described by Leveque on page 17
-    """
-    return math.sqrt(h * sum(abs(vector)**2))
-
+from simple_second_order import _2norm
 
 if __name__ == '__main__':
-    # Function representing choice of f(x) (as in the steady-state PDE u''(x) = f(x))
-    f = lambda x: (np.cos(x)) ** 2
-    # Function representing an analytic solution for u of the equation u'' = f(x)
-    actual = lambda x: (1/80)*(20*x**2 + x*(191 + np.cos(20)) - 10*np.cos(2*x) + 90)
-    eqn = SimpleSecondOrderODE(f, h=0.001, lower_bound=-10, upper_bound=10, actual=actual, alpha=0, beta=50)
+    # Comparison of differential operators A and A_
+    # A corresponds to a modified equation 2.57 in LeVeque (modified to support 2 Dirichlet boundary conditions)
+    # A_ corresponds to equation 2.10
+    # This is to test the generalizability of 2.57
+    u = lambda x: (1/20)*x*(x ** 4 + 399)
+    f = lambda x: x ** 3
+    h = 0.1
+    grid = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+    F = np.apply_along_axis(f, 0, grid)
+
+    A = (1/h**2)*np.array([
+        [h**2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [1, -2, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, -2, 1, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, -2, 1, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 1, -2, 1, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 1, -2, 1, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 1, -2, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 1, -2, 1, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 1, -2, 1, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 1, -2, 1],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, h**2]
+    ])
+    F[0] = 0
+    F[-1] = 20
+    solution = np.linalg.solve(A, F)
+    residuals = A @ solution - F
+    uhat = np.apply_along_axis(u, 0, grid)
+    lte = A @ uhat - F
+    lte_2norm = _2norm(h, lte)
+    # lte_2norm evaluates to 0.002669269562960097
+
+    grid_ = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    A_ = (1/h**2)*np.array([
+        [-2, 1, 0, 0, 0, 0, 0, 0, 0],
+        [1, -2, 1, 0, 0, 0, 0, 0, 0],
+        [0, 1, -2, 1, 0, 0, 0, 0, 0],
+        [0, 0, 1, -2, 1, 0, 0, 0, 0],
+        [0, 0, 0, 1, -2, 1, 0, 0, 0],
+        [0, 0, 0, 0, 1, -2, 1, 0, 0],
+        [0, 0, 0, 0, 0, 1, -2, 1, 0],
+        [0, 0, 0, 0, 0, 0, 1, -2, 1],
+        [0, 0, 0, 0, 0, 0, 0, 1, -2],
+    ])
+    F_ = np.apply_along_axis(f, 0, grid_)
+    F_[0] = F_[0]
+    F_[-1] = F_[-1] - 20/h**2
+    solution_ = np.linalg.solve(A_, F_)
+    residuals_ = A_ @ solution_ - F_
+    uhat_ = np.apply_along_axis(u, 0, grid_)
+    lte_ = A_ @ uhat_ - F_
+    lte__2norm = _2norm(h, lte_)
+    # lte__2norm evaluates to 0.0026692695628849137
+    # so we can simplify the implementation by using an operator
+    # based on A
