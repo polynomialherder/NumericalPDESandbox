@@ -89,14 +89,14 @@ class SimpleSecondOrderODE:
         """
         return np.linspace(
             self.lower_bound,
-            self.upper_bound + 2*self.h,
+            self.upper_bound + self.h,
             self.rows,
             endpoint=False
         )
 
     def apply_boundary_conditions_f(self, F):
         F[0] = self.alpha.value
-        F[-2] = self.beta.value
+        F[-1] = self.beta.value
         return F
 
     @property
@@ -162,12 +162,12 @@ class SimpleSecondOrderODE:
             # If the BC is not Dirichlet, then it's Neumann, so we use a
             # second order accurate one-sided approximation to the first
             # derivative
-            A[0][0] = 3*self.h/2
-            A[0][1] = -2*self.h
-            A[0][2] = self.h/2
+            A[0][0] = -3*self.h/2
+            A[0][1] = 2*self.h
+            A[0][2] = -self.h/2
 
         if self.beta.boundary_type == BCType.DIRICHLET:
-            A[-1][-2] = self.h**2
+            A[-1][-1] = self.h**2
         else:
             # If the BC is not Dirichlet, then it's Neumann
             A[-1][-3] = 3*self.h/2
@@ -277,7 +277,7 @@ class SimpleSecondOrderODE:
         plt.legend()
         plt.show()
 
-    def plot_h_vs_error(self):
+    def plot_h_vs_error(self, subtitle=""):
         errors = []
         for h in self.test_hs:
             eqn.h = h
@@ -286,8 +286,8 @@ class SimpleSecondOrderODE:
         hs = (self.test_hs)
         plt.loglog(hs, errors)
         plt.xlabel("h")
-        plt.ylabel("2-Norm of Global Truncation Error")
-        plt.title("Error vs h")
+        plt.ylabel("Global Error")
+        plt.title(f"Error vs h{'' if not subtitle else ': ' + subtitle}")
         plt.show()
 
 
@@ -338,4 +338,7 @@ if __name__ == '__main__':
         alpha=alpha_,
         beta=beta_
     )
+
+    eqn.plot_h_vs_error(subtitle="Dirichlet BCs")
+    eqn_.plot_h_vs_error(subtitle="Dirichlet & Neumann BCs")
 
