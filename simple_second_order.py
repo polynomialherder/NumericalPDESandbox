@@ -11,6 +11,7 @@ from functools import partial, cached_property
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.sparse import lil_matrix, csr_matrix
 
 class BCType(Enum):
     """ An enum value representing either a Dirichlet boundary condition
@@ -47,7 +48,7 @@ class SimpleSecondOrderODE:
     def __init__(self, f, h=0.1,
                  alpha=0, beta=50,
                  lower_bound=0, upper_bound=1,
-                 actual=None
+                 actual=None, dense=True
     ):
         """ Initialize a SimpleSecondOrderODE object. Given a source function
             f, transforms the problem into a linear equation AU = F where F = f(X)
@@ -58,6 +59,7 @@ class SimpleSecondOrderODE:
         """
         self.h = h
         self.f = f
+        self.dense = dense
         self.alpha = self.normalize_boundary_condition(alpha)
         self.beta = self.normalize_boundary_condition(beta)
         self.lower_bound = lower_bound
@@ -110,8 +112,10 @@ class SimpleSecondOrderODE:
 
     @property
     def rows(self):
-        """ Compute the number of rows in the tridiagonal Toeplitz matrix A.
-            We coerce the result to be an integer using ceil instead of int because
+        """ Compute the number of rows in the (mostly) tridiagonal Toeplitz matrix A
+            that represents our differential operator
+
+            Note that we coerce the result to be an integer using ceil instead of int because
             floating point error occasionally results in strange values otherwise.
             The result must be an integer because we will be passing it to `np.full`
             which expects integer arguments
@@ -119,11 +123,58 @@ class SimpleSecondOrderODE:
         return math.ceil((self.upper_bound - self.lower_bound) / self.h + 1)
 
     def apply_boundary_conditions_A(self, A):
-        # Note that the last column of the penultimate row is 0 --
-        # this will be corrected
-        left_column = np.zeros(len(A))
+        if self.alpha.boundary_type == BCType.DIRICHLET:
+            # If we have a Dirichlet boundary, then simply set the first
+            # elements of the first and last rows to h**2 since we'll be
+            # multiplying by h**2 inverse as the last step of building A
+            A[0, 0] = self.h ** 2
+        else:
+            # If the BC is not Dirichlet, then it's Neumann, so we use a
+            # second order accurate one-sided approximation to the first
+            # derivative
+            A[0, 0] = -3*self.h/2
+            A[0, 1] = 2*self.h
+            A[0, 2] = -self.h/2
+
+        if self.beta.boundary_type == BCType.DIRICHLET:
+            A[-1, -1] = self.h**2
+        else:
+            # If the BC is not Dirichlet, then it's Neumann
+            A[-1, -3] = 3*self.h/2
+            A[-1, -2] = -2*self.h
+            A[-1, -1] = self.h/2
+
+        return A
+
+
+    @property
+    def A(self):
+        """ Determine the tridiagonal Toeplitz matrix that determines our finite
+            difference approximation to the second derivative by summing three diagonal
+            matrices
+        """
+        if self.dense:
+            A_ = self.build_dense_base_matrix()
+        else:
+            A_ = self.build_sparse_base_matrix()
+
+        A_ = self.apply_boundary_conditions_A(A_)
+
+        if not self.dense:
+            A_ = csr_matrix(A_)
+
+        return self.coef * A_
+
+
+    def build_dense_base_matrix(self):
+        """ Build a dense base matrix of size rows-2 x rows-2
+        """
+        A = np.diag(np.full(self.rows-3, 1), k=-1) + \
+             np.diag(np.full(self.rows-2, -2), k=0) + \
+             np.diag(np.full(self.rows-3, 1), k=1)
+        left_column = np.zeros(A.shape[0])
         left_column[0] = 1
-        right_column = np.zeros(len(A))
+        right_column = np.zeros(A.shape[0])
         right_column[-1] = 1
         A = np.column_stack((left_column, A, right_column))
         # After the np.column_stack call A looks like
@@ -134,7 +185,7 @@ class SimpleSecondOrderODE:
         # | 0  0  0 0 ... 1 -2 1 |
         #
         # Create an array of zeros for the first and last rows
-        boundary = np.zeros(len(A[0]))
+        boundary = np.zeros(A.shape[1])
         A = np.vstack(
             (
                 boundary,
@@ -153,42 +204,30 @@ class SimpleSecondOrderODE:
         #
         # and so applying the boundary conditions to A is a matter of
         # modifying the first and last rows
-        if self.alpha.boundary_type == BCType.DIRICHLET:
-            # If we have a Dirichlet boundary, then simply set the first
-            # elements of the first and last rows to h**2 since we'll be
-            # multiplying by h**2 inverse as the last step of building A
-            A[0][0] = self.h ** 2
-        else:
-            # If the BC is not Dirichlet, then it's Neumann, so we use a
-            # second order accurate one-sided approximation to the first
-            # derivative
-            A[0][0] = -3*self.h/2
-            A[0][1] = 2*self.h
-            A[0][2] = -self.h/2
-
-        if self.beta.boundary_type == BCType.DIRICHLET:
-            A[-1][-1] = self.h**2
-        else:
-            # If the BC is not Dirichlet, then it's Neumann
-            A[-1][-3] = 3*self.h/2
-            A[-1][-2] = -2*self.h
-            A[-1][-1] = self.h/2
-
         return A
 
 
-    @property
-    def A(self):
-        """ Determine the tridiagonal Toeplitz matrix that determines our finite
-            difference approximation to the second derivative by summing three diagonal
-            matrices
-        """
-        A_ = np.diag(np.full(self.rows-3, 1), k=-1) + \
-             np.diag(np.full(self.rows-2, -2), k=0) + \
-             np.diag(np.full(self.rows-3, 1), k=1)
 
-        A_ = self.apply_boundary_conditions_A(A_)
-        return self.coef * A_
+    def build_sparse_base_matrix(self):
+        """ Build a sparse list-of-lists base matrix. This matrix
+            should be converted to a more efficient sparse representation
+            for algebraic operations (such as CSR) prior to solving
+        """
+        A_ = lil_matrix(
+            (self.rows, self.rows)
+        )
+        A_.setdiag(1, 1)
+        A_.setdiag(-2, 0)
+        A_.setdiag(1, -1)
+        # We'd like to modify the boundaries later, so set them to zero
+        # for now
+        A_[0, 0] = 0
+        A_[0, 1] = 0
+        A_[0, 2] = 0
+        A_[-1, -1] = 0
+        A_[-1, -2] = 0
+        A_[-1, -3] = 0
+        return A_
 
 
     def apply_actual(self):
@@ -323,6 +362,17 @@ if __name__ == '__main__':
         alpha=0,
         beta=20
     )
+    eqn.dense = True
+    eqn2 = SimpleSecondOrderODE(
+        f,
+        h=0.1,
+        lower_bound=0,
+        upper_bound=1,
+        actual=u,
+        alpha=0,
+        beta=20
+    )
+    eqn2.dense = False
 
     # Note that to pass a Dirichlet BC, you can pass either a number directly as above or
     # a BoundaryCondition object with BCType.DIRICHLET
@@ -338,7 +388,22 @@ if __name__ == '__main__':
         alpha=alpha_,
         beta=beta_
     )
+    eqn_.dense = True
 
+    eqn_2 = SimpleSecondOrderODE(
+        f,
+        h=0.1,
+        lower_bound=0,
+        upper_bound=1,
+        actual=u_,
+        alpha=alpha_,
+        beta=beta_
+    )
+    eqn_2.dense = False
+
+    # Confirm that dense plots line up with sparse plots
     eqn.plot_h_vs_error(subtitle="Dirichlet BCs")
+    eqn2.plot_h_vs_error(subtitle="Dirichlet BCs")
     eqn_.plot_h_vs_error(subtitle="Dirichlet & Neumann BCs")
+    eqn_2.plot_h_vs_error(subtitle="Dirichlet & Neumann BCs")
 
