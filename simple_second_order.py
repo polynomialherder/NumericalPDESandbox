@@ -48,7 +48,7 @@ class SimpleSecondOrderODE:
     def __init__(self, f, h=0.1,
                  alpha=0, beta=50,
                  lower_bound=0, upper_bound=1,
-                 actual=None, dense=True
+                 actual=None, dense=False
     ):
         """ Initialize a SimpleSecondOrderODE object. Given a source function
             f, transforms the problem into a linear equation AU = F where F = f(X)
