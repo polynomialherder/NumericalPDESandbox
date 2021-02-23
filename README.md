@@ -1,10 +1,7 @@
 # Numerical PDE Sandbox
 
-This is a sandbox for playing with concepts in numerical solution of partial differential equations as I work through Finite Difference Methods for Ordinary and Partial Differential Equations by Randall J. Leveque.
+This is a sandbox for playing with concepts in numerical solution of partial differential equations as I work through Finite Difference Methods for Ordinary and Partial Differential Equations by Randall J. LeVeque.
 
-It consists of the following modules
+For usage examples see the `main.py` script, which can be run interactively with `python -i main.py`.
 
-- [simple_second_order.py](simple_second_order.py) - a set of abstractions for solving a simple linear second order differential equation of the form `f(x) = u''(x)`
-- [sandbox.py](sandbox.py) - a scratchpad for testing ideas
-
-This repository does not currently expose any APIs or UIs. I presently interact with it by doing `python -i script.py` (where `script.py` is one of the modules in this repository) which executes any toplevel code in `script.py` and loads all of the definitions into a Python interpreter session.
+Unit tests can be run with pytest by doing `python -m pytest solver` (after doing `pip install -r requirements.txt`).
