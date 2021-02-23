@@ -3,50 +3,23 @@ This module consists of abstractions for solving a simple linear second order di
 f(x) = u''(x). The methods implemented are based on the discussion in Finite Difference Methods for Ordinary and Partial
 Differential Equations by Randall Leveque, sections 2.1-2.10.
 """
-
 import math
 
 from enum import Enum
-from functools import partial, cached_property
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 from scipy.sparse import lil_matrix, csr_matrix
+from scipy.sparse.linalg import spsolve
 
-class BCType(Enum):
-    """ An enum value representing either a Dirichlet boundary condition
-        or a Neumann boundary condition
-    """
-
-    DIRICHLET = 1
-    NEUMANN = 2
+from solver.boundary import BCType, BoundaryCondition
 
 
-class BoundaryCondition:
-    """ A BoundaryCondition object contains the information necessary to apply
-        boundary conditions to the solution of the PDE -- namely, the boundary type,
-        which must be one of BCType.DIRICHLET or BCType.NEUMANN, and the value of
-        u(gamma) or u'(gamma) at the boundary where gamma is the boundary point and
-        u is the solution of the PDE.
-    """
-
-    def __init__(self, boundary_type, value):
-        expected_boundary_types = [BCType.DIRICHLET, BCType.NEUMANN]
-
-        if boundary_type not in expected_boundary_types:
-            error_str = "The boundary_type must be one of {expected_boundary_types}, got {boundary_type} instead."
-            raise Exception(error_str)
-
-        self.boundary_type = boundary_type
-        self.value = value
-
-    def __repr__(self):
-        return f"<BoundaryCondition {self.boundary_type} value:{self.value}>"
-
-class SimpleSecondOrderODE:
+class PoissonSolver:
 
     def __init__(self, f, h=0.1,
-                 alpha=0, beta=50,
+                 alpha=0, beta=0,
                  lower_bound=0, upper_bound=1,
                  actual=None, dense=False
     ):
@@ -60,12 +33,22 @@ class SimpleSecondOrderODE:
         self.h = h
         self.f = f
         self.dense = dense
-        self.alpha = self.normalize_boundary_condition(alpha)
-        self.beta = self.normalize_boundary_condition(beta)
+        self.alpha = alpha
+        self.beta = beta
+        self.set_boundary_conditions()
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.actual = actual
-        self.test_hs = [1/1000, 1/500, 1/320, 1/250, 1/125, 1/100, 1/50, 1/30, 1/25, 1/20, 1/10, 1/5, 1/3]
+        self.test_hs = [1/1000, 1/500, 1/320, 1/250, 1/125, 1/100, 1/50, 1/30, 1/25, 1/20, 1/10, 1/5]
+
+    def set_boundary_conditions(self):
+        # These should be dynamic properties with getter/setter methods
+        # that automatically call normalize_boundary_condition
+        self.alpha = self.normalize_boundary_condition(self.alpha)
+        if self.alpha == BCType.PERIODIC:
+            self.beta = self.alpha
+        else:
+            self.beta = self.normalize_boundary_condition(self.beta)
 
 
     @staticmethod
@@ -85,20 +68,37 @@ class SimpleSecondOrderODE:
 
 
     @property
+    def edge_centered(self):
+        """ Our grid is edge-centered if either boundary condition is Dirichlet,
+            and cell-centered otherwise
+        """
+        return BCType.DIRICHLET in (self.alpha.boundary_type, self.beta.boundary_type)
+
+
+    @property
     def mesh(self):
         """ Create an evenly spaced mesh of points representing the discretized
             domain of our problem
         """
+        if self.edge_centered:
+            return np.linspace(
+                self.lower_bound + self.h,
+                self.upper_bound,
+                self.rows,
+                endpoint=False
+            )
+        # If our grid is not edge centered, it's cell centered
         return np.linspace(
-            self.lower_bound,
-            self.upper_bound + self.h,
+            self.lower_bound + self.h/2,
+            self.upper_bound - self.h/2,
             self.rows,
-            endpoint=False
+            endpoint=True
         )
 
     def apply_boundary_conditions_f(self, F):
-        F[0] = self.alpha.value
-        F[-1] = self.beta.value
+        if self.alpha.nth_derivative == 0:
+            F[0] = F[0] - self.coef*self.alpha.value
+            F[-1] = F[-1] - self.coef*self.beta.value
         return F
 
     @property
@@ -111,6 +111,11 @@ class SimpleSecondOrderODE:
 
 
     @property
+    def endpoint_factor(self):
+        return -1 if self.edge_centered else 0
+
+
+    @property
     def rows(self):
         """ Compute the number of rows in the (mostly) tridiagonal Toeplitz matrix A
             that represents our differential operator
@@ -120,30 +125,38 @@ class SimpleSecondOrderODE:
             The result must be an integer because we will be passing it to `np.full`
             which expects integer arguments
         """
-        return math.ceil((self.upper_bound - self.lower_bound) / self.h + 1)
+        return math.ceil((self.upper_bound - self.lower_bound) / self.h) + self.endpoint_factor
+
 
     def apply_boundary_conditions_A(self, A):
-        if self.alpha.boundary_type == BCType.DIRICHLET:
-            # If we have a Dirichlet boundary, then simply set the first
-            # elements of the first and last rows to h**2 since we'll be
-            # multiplying by h**2 inverse as the last step of building A
-            A[0, 0] = self.h ** 2
-        else:
-            # If the BC is not Dirichlet, then it's Neumann, so we use a
-            # second order accurate one-sided approximation to the first
-            # derivative
-            A[0, 0] = -3*self.h/2
-            A[0, 1] = 2*self.h
-            A[0, 2] = -self.h/2
 
-        if self.beta.boundary_type == BCType.DIRICHLET:
-            A[-1, -1] = self.h**2
+        if self.alpha.nth_derivative == 0:
+            A[0, 0] = -2
+            A[0, 1] = 1
+            #A[0, 0] = self.h ** 2
         else:
-            # If the BC is not Dirichlet, then it's Neumann
+            # If the BC is not a 0th derivative then (for our purposes) it's
+            # a first derivative, so we use a second order accurate one-sided
+            # approximation to the first derivative
+            A[0, 0] = -3*self.h
+            A[0, 1] = -2*self.h
+            A[0, 2] = self.h/2
+
+        if self.beta.nth_derivative == 0:
+            A[-1, -1] = -2
+            A[-1, -2] = 1
+            #A[-1, -1] = self.h ** 2
+        else:
+            # If the BC is not a 0th derivative then (for our purposes) it's
+            # a first derivative, so we use a second order accurate one-sided
+            # approximation to the first derivative
             A[-1, -3] = 3*self.h/2
             A[-1, -2] = -2*self.h
             A[-1, -1] = self.h/2
 
+        if self.alpha.boundary_type == BCType.PERIODIC:
+            A[0, -1] = 1
+            A[-1, 0] = 1
         return A
 
 
@@ -202,7 +215,7 @@ class SimpleSecondOrderODE:
         # | 0  0  0 0 ... 1 -2 1 |
         # | 0  0  0 0 ... 0  0 0 |
         #
-        # and so applying the boundary conditions to A is a matter of
+        # so that applying the boundary conditions to A is a matter of
         # modifying the first and last rows
         return A
 
@@ -252,7 +265,9 @@ class SimpleSecondOrderODE:
     def solve(self):
         """ Solve an ODE/PDE in the form AU = F for U
         """
-        return np.linalg.solve(self.A, self.F)
+        if self.dense:
+            return np.linalg.solve(self.A, self.F)
+        return spsolve(self.A, self.F)
 
 
     def lte(self):
@@ -268,9 +283,10 @@ class SimpleSecondOrderODE:
     def gte(self):
         """ The global truncation error as defined by Leveque, namely
             -(A^{-1})T where T is the local truncation error. Synonymous
-            with the residuals method (which is likely more performant).
+            with SimpleSecondOrderODE.residuals method (which is likely more performant).
         """
-        return -(np.linalg.inv(self.A)) @ self.lte()
+        #self.residuals() #-(np.linalg.inv(self.A)) @ self.lte()
+        return self.solution - self.apply_actual()
 
 
     @property
@@ -303,7 +319,7 @@ class SimpleSecondOrderODE:
         for h in self.test_hs:
             self.h = h
             lte = self.lte()
-            _2norms.append(_2norm(eqn.h, lte))
+            _2norms.append(_2norm(self.h, lte))
         return _2norms
 
 
@@ -319,8 +335,8 @@ class SimpleSecondOrderODE:
     def plot_h_vs_error(self, subtitle=""):
         errors = []
         for h in self.test_hs:
-            eqn.h = h
-            errors.append(_2norm(eqn.h, eqn.gte()))
+            self.h = h
+            errors.append(_2norm(self.h, self.gte()))
         errors = (abs(np.array(errors)))
         hs = (self.test_hs)
         plt.loglog(hs, errors)
@@ -346,64 +362,3 @@ def l1_norm(actual, reference):
 
 def infinity_norm(actual, reference):
     return max(abs(actual - reference))
-
-
-if __name__ == '__main__':
-    # Function representing choice of f(x) (as in the steady-state PDE u''(x) = f(x))
-    f = lambda x: x ** 3
-    # Function representing an analytic solution for u of the equation u'' = f(x)
-    u = lambda x: (1/20)*x*(x ** 4 + 399)
-    eqn = SimpleSecondOrderODE(
-        f,
-        h=0.1,
-        lower_bound=0,
-        upper_bound=1,
-        actual=u,
-        alpha=0,
-        beta=20
-    )
-    eqn.dense = True
-    eqn2 = SimpleSecondOrderODE(
-        f,
-        h=0.1,
-        lower_bound=0,
-        upper_bound=1,
-        actual=u,
-        alpha=0,
-        beta=20
-    )
-    eqn2.dense = False
-
-    # Note that to pass a Dirichlet BC, you can pass either a number directly as above or
-    # a BoundaryCondition object with BCType.DIRICHLET
-    alpha_ = BoundaryCondition(BCType.DIRICHLET, 0)
-    beta_ = BoundaryCondition(BCType.NEUMANN, 20)
-    u_ = lambda x: (1/20)*x*(x ** 4 + 395)
-    eqn_ = SimpleSecondOrderODE(
-        f,
-        h=0.1,
-        lower_bound=0,
-        upper_bound=1,
-        actual=u_,
-        alpha=alpha_,
-        beta=beta_
-    )
-    eqn_.dense = True
-
-    eqn_2 = SimpleSecondOrderODE(
-        f,
-        h=0.1,
-        lower_bound=0,
-        upper_bound=1,
-        actual=u_,
-        alpha=alpha_,
-        beta=beta_
-    )
-    eqn_2.dense = False
-
-    # Confirm that dense plots line up with sparse plots
-    eqn.plot_h_vs_error(subtitle="Dirichlet BCs")
-    eqn2.plot_h_vs_error(subtitle="Dirichlet BCs")
-    eqn_.plot_h_vs_error(subtitle="Dirichlet & Neumann BCs")
-    eqn_2.plot_h_vs_error(subtitle="Dirichlet & Neumann BCs")
-
