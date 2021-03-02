@@ -152,8 +152,8 @@ class PoissonSolver:
             A[-1, -2] = 1
 
         if self.beta.is_neumann:
-            A[-1, -2] = 2
-            A[-1, -1] = -2
+            A[-1, -2] = 1
+            A[-1, -1] = -1
 
         if self.alpha.is_periodic:
             A[0, -1] = 1

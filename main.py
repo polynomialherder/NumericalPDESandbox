@@ -53,3 +53,22 @@ if __name__ == '__main__':
     )
     eqn3.dense = True
     eqn3.plot_h_vs_error()
+
+    f4 = lambda t: 4*np.sin(2*t)
+    actual4 = lambda t: np.sin(2*t)
+    eqn4 = PoissonSolver(
+        f4,
+        h=0.1,
+        lower_bound=0,
+        upper_bound=2*math.pi,
+        actual=actual4,
+        alpha=BoundaryCondition(
+            BCType.PERIODIC,
+            0
+        ),
+        beta=BoundaryCondition(
+            BCType.PERIODIC,
+            0
+        )
+    )
+    eqn4.plot_h_vs_error()
