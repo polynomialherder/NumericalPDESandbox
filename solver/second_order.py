@@ -95,11 +95,6 @@ class PoissonSolver:
             endpoint=True
         )
 
-    def apply_boundary_conditions_f(self, F):
-        if self.alpha.nth_derivative == 0:
-            F[0] = F[0] - self.coef*self.alpha.value
-            F[-1] = F[-1] - self.coef*self.beta.value
-        return F
 
     @property
     def F(self):
@@ -127,36 +122,43 @@ class PoissonSolver:
         """
         return math.ceil((self.upper_bound - self.lower_bound) / self.h) + self.endpoint_factor
 
+    def apply_boundary_conditions_f(self, F):
+        if self.alpha.is_dirichlet:
+            F[0] = F[0] - self.coef*self.alpha.value
+
+        elif self.alpha.is_neumann:
+            F[0] = F[0]/2 + 1/self.h * self.alpha.value
+
+        if self.beta.is_dirichlet:
+            F[-1] = F[-1] - self.coef*self.beta.value
+
+        elif self.beta.is_neumann:
+            F[-1] = F[-1] - 2/self.h * self.beta.value
+
+        return F
+
 
     def apply_boundary_conditions_A(self, A):
-
-        if self.alpha.nth_derivative == 0:
+        if self.alpha.is_dirichlet:
             A[0, 0] = -2
             A[0, 1] = 1
-            #A[0, 0] = self.h ** 2
-        else:
-            # If the BC is not a 0th derivative then (for our purposes) it's
-            # a first derivative, so we use a second order accurate one-sided
-            # approximation to the first derivative
-            A[0, 0] = -3*self.h
-            A[0, 1] = -2*self.h
-            A[0, 2] = self.h/2
 
-        if self.beta.nth_derivative == 0:
+        elif self.alpha.is_neumann:
+            A[0, 0] = -1
+            A[0, 1] = 1
+
+        if self.beta.is_dirichlet:
             A[-1, -1] = -2
             A[-1, -2] = 1
-            #A[-1, -1] = self.h ** 2
-        else:
-            # If the BC is not a 0th derivative then (for our purposes) it's
-            # a first derivative, so we use a second order accurate one-sided
-            # approximation to the first derivative
-            A[-1, -3] = 3*self.h/2
-            A[-1, -2] = -2*self.h
-            A[-1, -1] = self.h/2
 
-        if self.alpha.boundary_type == BCType.PERIODIC:
+        if self.beta.is_neumann:
+            A[-1, -2] = 2
+            A[-1, -1] = -2
+
+        if self.alpha.is_periodic:
             A[0, -1] = 1
             A[-1, 0] = 1
+
         return A
 
 
@@ -285,7 +287,6 @@ class PoissonSolver:
             -(A^{-1})T where T is the local truncation error. Synonymous
             with SimpleSecondOrderODE.residuals method (which is likely more performant).
         """
-        #self.residuals() #-(np.linalg.inv(self.A)) @ self.lte()
         return self.solution - self.apply_actual()
 
 

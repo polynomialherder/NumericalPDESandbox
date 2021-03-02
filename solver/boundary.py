@@ -40,13 +40,21 @@ class BoundaryCondition:
         self._nth_derivative = nth_derivative
 
 
+
     @property
-    def nth_derivative(self):
-        if self.boundary_type == BCType.NEUMANN:
-            self._nth_derivative = 1
-        elif self.boundary_type == BCType.DIRICHLET:
-            self._nth_derivative = 0
-        return self._nth_derivative
+    def is_dirichlet(self):
+        return self.boundary_type == BCType.DIRICHLET
+
+
+    @property
+    def is_neumann(self):
+        return self.boundary_type == BCType.NEUMANN
+
+
+    @property
+    def is_periodic(self):
+        return self.boundary_type == BCType.PERIODIC
+
 
 
     def __repr__(self):

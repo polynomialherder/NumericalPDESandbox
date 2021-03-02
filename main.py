@@ -1,3 +1,7 @@
+import math
+
+import numpy as np
+
 from solver.boundary import BCType, BoundaryCondition
 from solver.second_order import PoissonSolver
 from solver.second_order import _2norm
@@ -18,7 +22,7 @@ if __name__ == '__main__':
         beta=20
     )
     eqn.dense = True
-    eqn.plot_h_vs_error()
+    #eqn.plot_h_vs_error()
 
 
     alpha_ = BoundaryCondition(BCType.DIRICHLET, 0)
@@ -36,3 +40,16 @@ if __name__ == '__main__':
     eqn_.dense = True
     eqn_.plot_h_vs_error()
 
+    f3 = lambda t: -(2*np.sin(t) + t*np.cos(t))
+    actual3 = lambda t: t * np.cos(t)
+    eqn3 = PoissonSolver(
+        f3,
+        h=0.1,
+        lower_bound=0,
+        upper_bound=2*math.pi, #2*math.pi,
+        actual=actual3,
+        alpha=0,
+        beta=2*math.pi
+    )
+    eqn3.dense = True
+    eqn3.plot_h_vs_error()
