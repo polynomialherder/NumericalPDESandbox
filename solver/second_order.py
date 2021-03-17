@@ -18,7 +18,7 @@ from solver.boundary import BCType, BoundaryCondition
 
 class PoissonSolver:
 
-    def __init__(self, f, h=0.1,
+    def __init__(self, f, rows=0.1,
                  alpha=0, beta=0,
                  lower_bound=0, upper_bound=1,
                  actual=None, dense=False
@@ -30,8 +30,8 @@ class PoissonSolver:
 
             Supports Neumann and Dirichlet boundary conditions
         """
-        self.h = h
         self.f = f
+        self.rows = rows
         self.dense = dense
         self.alpha = alpha
         self.beta = beta
@@ -39,7 +39,7 @@ class PoissonSolver:
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.actual = actual
-        self.test_hs = [1/1000, 1/500, 1/320, 1/250, 1/125, 1/100, 1/50, 1/30, 1/25, 1/20, 1/10, 1/5]
+        self.test_rows = [10240, 5120, 2560, 1280, 640, 320, 160, 80, 40, 20]
 
     def set_boundary_conditions(self):
         # These should be dynamic properties with getter/setter methods
@@ -111,29 +111,34 @@ class PoissonSolver:
 
 
     @property
-    def rows(self):
-        """ Compute the number of rows in the (mostly) tridiagonal Toeplitz matrix A
-            that represents our differential operator
+    def h(self):
+        return (self.upper_bound - self.lower_bound) / (self.rows - self.endpoint_factor)
 
-            Note that we coerce the result to be an integer using ceil instead of int because
-            floating point error occasionally results in strange values otherwise.
-            The result must be an integer because we will be passing it to `np.full`
-            which expects integer arguments
-        """
-        return math.ceil((self.upper_bound - self.lower_bound) / self.h) + self.endpoint_factor
+
+    # @property
+    # def rows(self):
+    #     """ Compute the number of rows in the (mostly) tridiagonal Toeplitz matrix A
+    #         that represents our differential operator
+
+    #         Note that we coerce the result to be an integer using ceil instead of int because
+    #         floating point error occasionally results in strange values otherwise.
+    #         The result must be an integer because we will be passing it to `np.full`
+    #         which expects integer arguments
+    #     """
+    #     return math.ceil((self.upper_bound - self.lower_bound) / self.h) + self.endpoint_factor
 
     def apply_boundary_conditions_f(self, F):
         if self.alpha.is_dirichlet:
             F[0] = F[0] - self.coef*self.alpha.value
 
         elif self.alpha.is_neumann:
-            F[0] = F[0]/2 + 1/self.h * self.alpha.value
+            F[0] = F[0] + 1/self.h * self.alpha.value
 
         if self.beta.is_dirichlet:
             F[-1] = F[-1] - self.coef*self.beta.value
 
         elif self.beta.is_neumann:
-            F[-1] = F[-1] - 2/self.h * self.beta.value
+            F[-1] = F[-1] - 1/self.h * self.beta.value
 
         return F
 
@@ -155,9 +160,13 @@ class PoissonSolver:
             A[-1, -2] = 1
             A[-1, -1] = -1
 
-        if self.alpha.is_periodic:
+        if self.alpha.is_periodic or self.beta.is_periodic:
+            A[0, 0] = -2
+            A[0, 1] = 1
             A[0, -1] = 1
             A[-1, 0] = 1
+            A[-1, -2] = 1
+            A[-1, -1] = -2
 
         return A
 
@@ -260,6 +269,14 @@ class PoissonSolver:
 
 
     @property
+    def is_singular(self):
+        self.dense = True
+        singular = not (np.linalg.matrix_rank(self.A) == self.A.shape[0])
+        self.dense = False
+        return singular
+
+
+    @property
     def solution(self):
         return self.solve()
 
@@ -307,8 +324,8 @@ class PoissonSolver:
         """
         norms = []
         prev = self.h
-        for h in self.test_hs:
-            self.h = h
+        for row in self.test_rows:
+            self.rows = row
             two_norm = np.linalg.norm(self.A_inv, 2)
             norms.append(two_norm)
         self.h = prev
@@ -317,8 +334,8 @@ class PoissonSolver:
 
     def check_consistency(self):
         _2norms = []
-        for h in self.test_hs:
-            self.h = h
+        for row in self.test_rows:
+            self.rows = row
             lte = self.lte()
             _2norms.append(_2norm(self.h, lte))
         return _2norms
@@ -335,11 +352,12 @@ class PoissonSolver:
 
     def plot_h_vs_error(self, subtitle=""):
         errors = []
-        for h in self.test_hs:
-            self.h = h
+        hs = []
+        for row in self.test_rows:
+            self.rows = row
+            hs.append(self.h)
             errors.append(_2norm(self.h, self.gte()))
-        errors = (abs(np.array(errors)))
-        hs = (self.test_hs)
+        errors = abs(np.array(errors))
         plt.loglog(hs, errors)
         plt.xlabel("h")
         plt.ylabel("Global Error")

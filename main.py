@@ -14,7 +14,7 @@ if __name__ == '__main__':
     u = lambda x: (1/20)*x*(x ** 4 + 399)
     eqn = PoissonSolver(
         f,
-        h=0.1,
+        rows=10,
         lower_bound=0,
         upper_bound=1,
         actual=u,
@@ -30,7 +30,7 @@ if __name__ == '__main__':
     u_ = lambda x: (1/20)*x*(x ** 4 + 395)
     eqn_ = PoissonSolver(
         f,
-        h=0.1,
+        rows=10,
         lower_bound=0,
         upper_bound=1,
         actual=u_,
@@ -38,13 +38,13 @@ if __name__ == '__main__':
         beta=beta_
     )
     eqn_.dense = True
-    eqn_.plot_h_vs_error()
+    #eqn_.plot_h_vs_error()
 
     f3 = lambda t: -(2*np.sin(t) + t*np.cos(t))
     actual3 = lambda t: t * np.cos(t)
     eqn3 = PoissonSolver(
         f3,
-        h=0.1,
+        rows=10,
         lower_bound=0,
         upper_bound=2*math.pi, #2*math.pi,
         actual=actual3,
@@ -52,23 +52,23 @@ if __name__ == '__main__':
         beta=2*math.pi
     )
     eqn3.dense = True
-    eqn3.plot_h_vs_error()
+    #eqn3.plot_h_vs_error()
 
-    f4 = lambda t: 4*np.sin(2*t)
-    actual4 = lambda t: np.sin(2*t)
+    f4 = lambda t: np.cos(t)
+    actual4 = lambda t: 1 - np.cos(t)
     eqn4 = PoissonSolver(
         f4,
-        h=0.1,
+        rows=10,
         lower_bound=0,
         upper_bound=2*math.pi,
         actual=actual4,
         alpha=BoundaryCondition(
             BCType.PERIODIC,
-            0
+            f4(2*math.pi)
         ),
         beta=BoundaryCondition(
             BCType.PERIODIC,
-            0
+            f4(2*math.pi)
         )
     )
     eqn4.plot_h_vs_error()
