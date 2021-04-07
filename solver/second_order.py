@@ -115,30 +115,18 @@ class PoissonSolver:
         return (self.upper_bound - self.lower_bound) / (self.rows - self.endpoint_factor)
 
 
-    # @property
-    # def rows(self):
-    #     """ Compute the number of rows in the (mostly) tridiagonal Toeplitz matrix A
-    #         that represents our differential operator
-
-    #         Note that we coerce the result to be an integer using ceil instead of int because
-    #         floating point error occasionally results in strange values otherwise.
-    #         The result must be an integer because we will be passing it to `np.full`
-    #         which expects integer arguments
-    #     """
-    #     return math.ceil((self.upper_bound - self.lower_bound) / self.h) + self.endpoint_factor
-
     def apply_boundary_conditions_f(self, F):
         if self.alpha.is_dirichlet:
             F[0] = F[0] - self.coef*self.alpha.value
 
         elif self.alpha.is_neumann:
-            F[0] = F[0] + 1/self.h * self.alpha.value
+            F[0] = F[0] + 2*self.alpha.value/(3*self.h)
 
         if self.beta.is_dirichlet:
             F[-1] = F[-1] - self.coef*self.beta.value
 
         elif self.beta.is_neumann:
-            F[-1] = F[-1] - 1/self.h * self.beta.value
+            F[-1] = F[-1] - 2*self.beta.value/self.h
 
         return F
 
@@ -149,16 +137,16 @@ class PoissonSolver:
             A[0, 1] = 1
 
         elif self.alpha.is_neumann:
-            A[0, 0] = -1
-            A[0, 1] = 1
+            A[0, 0] = -2/3
+            A[0, 1] = 2/3
 
         if self.beta.is_dirichlet:
             A[-1, -1] = -2
             A[-1, -2] = 1
 
         if self.beta.is_neumann:
-            A[-1, -2] = 1
-            A[-1, -1] = -1
+            A[-1, -2] = -2
+            A[-1, -1] = 2
 
         if self.alpha.is_periodic or self.beta.is_periodic:
             A[0, 0] = -2
