@@ -14,6 +14,7 @@ from scipy.sparse import lil_matrix, csr_matrix
 from scipy.sparse.linalg import spsolve
 
 from solver.boundary import BCType, BoundaryCondition
+from solver.linalg_utils import has_solution
 
 
 class PoissonSolver:
@@ -97,6 +98,11 @@ class PoissonSolver:
 
 
     @property
+    def has_solution(self):
+        return has_solution(self)
+
+
+    @property
     def F(self):
         """ Given an ODE/PDE AU = F, return the source term F
         """
@@ -126,7 +132,7 @@ class PoissonSolver:
             F[-1] = F[-1] - self.coef*self.beta.value
 
         elif self.beta.is_neumann:
-            F[-1] = F[-1] - 2*self.beta.value/self.h
+            F[-1] = F[-1] - 2*self.beta.value/(3*self.h)
 
         return F
 
@@ -145,8 +151,8 @@ class PoissonSolver:
             A[-1, -2] = 1
 
         if self.beta.is_neumann:
-            A[-1, -2] = -2
-            A[-1, -1] = 2
+            A[-1, -2] = 2/3
+            A[-1, -1] = -2/3
 
         if self.alpha.is_periodic or self.beta.is_periodic:
             A[0, 0] = -2
@@ -272,6 +278,9 @@ class PoissonSolver:
     def solve(self):
         """ Solve an ODE/PDE in the form AU = F for U
         """
+        if self.has_solution:
+            print(f"Warning: there are no solutions to the equation A @ U = F")
+            return
         if self.dense:
             return np.linalg.solve(self.A, self.F)
         return spsolve(self.A, self.F)
