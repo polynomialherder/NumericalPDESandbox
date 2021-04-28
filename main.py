@@ -38,7 +38,7 @@ if __name__ == '__main__':
         beta=beta_
     )
     eqn_.dense = False
-    eqn_.plot_h_vs_error()
+    #eqn_.plot_h_vs_error()
 
 
     alpha3 = BoundaryCondition(BCType.NEUMANN, 0)
@@ -54,23 +54,19 @@ if __name__ == '__main__':
         beta=beta3
     )
     eqn3.dense = False
-    eqn3.plot_h_vs_error()
+    #eqn3.plot_h_vs_error()
 
     f4 = lambda t: np.cos(t)
     actual4 = lambda t: 1 - np.cos(t)
+    alpha4 = BoundaryCondition(BCType.NEUMANN, 0)
+    beta4 = BoundaryCondition(BCType.NEUMANN, 20)
     eqn4 = PoissonSolver(
         f4,
         rows=10,
         lower_bound=0,
         upper_bound=2*math.pi,
         actual=actual4,
-        alpha=BoundaryCondition(
-            BCType.PERIODIC,
-            f4(2*math.pi)
-        ),
-        beta=BoundaryCondition(
-            BCType.PERIODIC,
-            f4(2*math.pi)
-        )
+        alpha=alpha4,
+        beta=beta4
     )
-    #eqn4.plot_h_vs_error()
+    eqn4.plot_h_vs_error()

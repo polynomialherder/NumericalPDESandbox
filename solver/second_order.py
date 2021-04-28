@@ -11,10 +11,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from scipy.sparse import lil_matrix, csr_matrix
-from scipy.sparse.linalg import spsolve
+from scipy.sparse.linalg import spsolve, lsqr
 
 from solver.boundary import BCType, BoundaryCondition
-from solver.linalg_utils import has_solution
 
 
 class PoissonSolver:
@@ -40,7 +39,7 @@ class PoissonSolver:
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.actual = actual
-        self.test_rows = [10240, 5120, 2560, 1280, 640, 320, 160, 80, 40, 20]
+        self.test_rows = [5120, 2560, 1280, 640, 320, 160, 80, 40, 20]
 
     def set_boundary_conditions(self):
         # These should be dynamic properties with getter/setter methods
@@ -99,7 +98,9 @@ class PoissonSolver:
 
     @property
     def has_solution(self):
-        return has_solution(self)
+        if self.edge_centered:
+            return True
+        return (abs(sum(self.F))) < 10e-10
 
 
     @property
@@ -278,9 +279,11 @@ class PoissonSolver:
     def solve(self):
         """ Solve an ODE/PDE in the form AU = F for U
         """
-        if self.has_solution:
-            print(f"Warning: there are no solutions to the equation A @ U = F")
-            return
+        if not self.has_solution:
+            print(f"Warning: A @ U = F has no solutions, returning a least-squares approximation")
+            if self.dense:
+                return np.linalg.lstsq(self.A, self.F)[0]
+            return lsqr(self.A, self.F)[0]
         if self.dense:
             return np.linalg.solve(self.A, self.F)
         return spsolve(self.A, self.F)
