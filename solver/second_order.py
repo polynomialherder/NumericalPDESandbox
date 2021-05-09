@@ -310,7 +310,10 @@ class PoissonSolver:
 
 
     def print_singular_warning(self):
-        print(f"Warning: A @ U = F has no solutions, returning a least-squares approximation")
+        warning = f"Warning: A is singular and "
+        warning += "A @ U = F has infinitely many solutions, "
+        warning += "returning a least-squares approximation"
+        print(warning)
 
 
     def solve_dense(self):
@@ -320,13 +323,15 @@ class PoissonSolver:
             if self.has_solution:
                 self.print_singular_warning()
                 return np.linalg.lstsq(self.A, self.F)[0]
+        # TODO: Throw a custom exception or explicitly return something
+        #       if A is singular with no solutions.
 
 
     def solve_sparse(self):
         maybe_solution = spsolve(self.A, self.F)
-        # If the min of the solution is null, that means
-        # we got back an array of nans, which only happens
-        # if the A was singular
+        # If the min of the solution is nan, that means
+        # spsolve returned an array of nans which only happens
+        # if A was singular
         singular = np.isnan(min(maybe_solution))
         if not singular:
             return maybe_solution
@@ -334,6 +339,8 @@ class PoissonSolver:
         if self.has_solution:
             self.print_singular_warning()
             return lsqr(self.A, self.F)[0]
+        # TODO: Throw a custom exception or explicitly return something
+        #       if A is singular with no solutions.
 
 
     def solve(self):
