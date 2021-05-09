@@ -18,7 +18,7 @@ from solver.boundary import BCType, BoundaryCondition
 
 class PoissonSolver:
 
-    def __init__(self, f, rows=0.1,
+    def __init__(self, f, rows=10,
                  alpha=0, beta=0,
                  lower_bound=0, upper_bound=1,
                  actual=None, dense=False
@@ -72,7 +72,8 @@ class PoissonSolver:
         """ Our grid is edge-centered if either boundary condition is Dirichlet,
             and cell-centered otherwise
         """
-        return BCType.DIRICHLET in (self.alpha.boundary_type, self.beta.boundary_type)
+        return False
+        #return BCType.DIRICHLET in (self.alpha.boundary_type, self.beta.boundary_type)
 
 
     @property
@@ -100,6 +101,7 @@ class PoissonSolver:
     def has_solution(self):
         if self.edge_centered:
             return True
+
         return (abs(sum(self.F))) < 10e-10
 
 
@@ -123,6 +125,12 @@ class PoissonSolver:
 
 
     def apply_boundary_conditions_f(self, F):
+        if self.edge_centered:
+            return self.build_edge_centered_f(F)
+        return self.build_cell_centered_f(F)
+
+
+    def build_edge_centered_f(self, F):
         if self.alpha.is_dirichlet:
             F[0] = F[0] - self.coef*self.alpha.value
 
@@ -138,7 +146,17 @@ class PoissonSolver:
         return F
 
 
-    def apply_boundary_conditions_A(self, A):
+    def build_cell_centered_f(self, F):
+        if self.alpha.is_neumann:
+            F[0] = F[0] + self.alpha.value/self.h
+
+        if self.beta.is_neumann:
+            F[-1] = F[-1] - self.beta.value/self.h
+
+        return F
+
+
+    def build_edge_centered_A(self, A):
         if self.alpha.is_dirichlet:
             A[0, 0] = -2
             A[0, 1] = 1
@@ -162,8 +180,23 @@ class PoissonSolver:
             A[-1, 0] = 1
             A[-1, -2] = 1
             A[-1, -1] = -2
-
         return A
+
+
+    def build_cell_centered_A(self, A):
+        if self.alpha.is_neumann:
+            A[0, 0] = -1
+            A[0, 1] = 1
+        if self.beta.is_neumann:
+            A[-1, -2] = 1
+            A[-1, -1] = -1
+        return A
+
+
+    def apply_boundary_conditions_A(self, A):
+        if self.edge_centered:
+            return self.build_edge_centered_A(A)
+        return self.build_cell_centered_A(A)
 
 
     @property
@@ -276,17 +309,39 @@ class PoissonSolver:
         return self.solve()
 
 
+    def print_singular_warning(self):
+        print(f"Warning: A @ U = F has no solutions, returning a least-squares approximation")
+
+
+    def solve_dense(self):
+        try:
+            return np.linalg.solve(self.A, self.F)
+        except np.linalg.LinAlgError:
+            if self.has_solution:
+                self.print_singular_warning()
+                return np.linalg.lstsq(self.A, self.F)[0]
+
+
+    def solve_sparse(self):
+        maybe_solution = spsolve(self.A, self.F)
+        # If the min of the solution is null, that means
+        # we got back an array of nans, which only happens
+        # if the A was singular
+        singular = np.isnan(min(maybe_solution))
+        if not singular:
+            return maybe_solution
+
+        if self.has_solution:
+            self.print_singular_warning()
+            return lsqr(self.A, self.F)[0]
+
+
     def solve(self):
         """ Solve an ODE/PDE in the form AU = F for U
         """
-        if not self.has_solution:
-            print(f"Warning: A @ U = F has no solutions, returning a least-squares approximation")
-            if self.dense:
-                return np.linalg.lstsq(self.A, self.F)[0]
-            return lsqr(self.A, self.F)[0]
         if self.dense:
-            return np.linalg.solve(self.A, self.F)
-        return spsolve(self.A, self.F)
+            return self.solve_dense()
+        return self.solve_sparse()
 
 
     def lte(self):
@@ -301,8 +356,7 @@ class PoissonSolver:
 
     def gte(self):
         """ The global truncation error as defined by Leveque, namely
-            -(A^{-1})T where T is the local truncation error. Synonymous
-            with SimpleSecondOrderODE.residuals method (which is likely more performant).
+            -(A^{-1})T where T is the local truncation error. 
         """
         return self.solution - self.apply_actual()
 
