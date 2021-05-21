@@ -39,6 +39,8 @@ class PoissonSolver:
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.actual = actual
+        self.suppress_warnings = False
+        self.least_squares_solution = False
         self.test_rows = [5120, 2560, 1280, 640, 320, 160, 80, 40, 20]
 
     def set_boundary_conditions(self):
@@ -306,41 +308,65 @@ class PoissonSolver:
 
     @property
     def solution(self):
-        return self.solve()
+        solution = self.solve()
+        integral = 0
+        if self.least_squares_solution:
+            integral = np.cumsum(solution)[-1] / self.rows
+        return solution - integral
+
+    @property
+    def U(self):
+        return self.solution
 
 
     def print_singular_warning(self):
-        warning = f"Warning: A is singular and "
-        warning += "A @ U = F has infinitely many solutions, "
-        warning += "returning a least-squares approximation"
-        print(warning)
+        if not self.suppress_warnings:
+            warning = f"Warning: A is singular and "
+            warning += "A @ U = F has infinitely many solutions, "
+            warning += "returning a least-squares approximation"
+            print(warning)
 
 
     def solve_dense(self):
         try:
-            return np.linalg.solve(self.A, self.F)
+            solution = np.linalg.solve(self.A, self.F)
+            self.least_squares_solution = False
+            return solution
         except np.linalg.LinAlgError:
             if self.has_solution:
                 self.print_singular_warning()
+                self.least_squares_solution = True
                 return np.linalg.lstsq(self.A, self.F)[0]
-        # TODO: Throw a custom exception or explicitly return something
-        #       if A is singular with no solutions.
+            raise Exception(f"The linear operator A is singular and has no solutions")
 
 
     def solve_sparse(self):
+        # FIXME
+        # We check if the matrix is singular by calling spsolve, and checking if
+        # the minimum value of the array is nan. If it is, then the array was all
+        # nan, and so the matrix was singular, and we proceed with a last squares
+        # approximation instead. Otherwise, the matrix is nonsingular, in which case
+        # we just return the solution given by spsolve.
+        #
+        # This heuristic for checking if a matrix is singular is problematic as
+        # in certain cases spsolve will return a value even for singular matrices
+        # that differs substantially from what lsqr returns.
+        #
+        # Note that this isn't (alone) causing accuracy problems since for no test
+        # rowsize used in self.plot_h_vs_error is spsolve returning something non-nan
+        # (and therefore believing the matrix to be nonsingular).
         maybe_solution = spsolve(self.A, self.F)
-        # If the min of the solution is nan, that means
-        # spsolve returned an array of nans which only happens
-        # if A was singular
         singular = np.isnan(min(maybe_solution))
         if not singular:
+            print(f"Not singular")
+            self.least_squares_solution = False
             return maybe_solution
 
         if self.has_solution:
             self.print_singular_warning()
+            self.least_squares_solution = True
             return lsqr(self.A, self.F)[0]
-        # TODO: Throw a custom exception or explicitly return something
-        #       if A is singular with no solutions.
+        raise Exception(f"The linear operator A is singular and AU = F has no solutions")
 
 
     def solve(self):
@@ -348,6 +374,7 @@ class PoissonSolver:
         """
         if self.dense:
             return self.solve_dense()
+
         return self.solve_sparse()
 
 
@@ -414,10 +441,15 @@ class PoissonSolver:
     def plot_h_vs_error(self, subtitle=""):
         errors = []
         hs = []
-        for row in self.test_rows:
+        for idx, row in enumerate(self.test_rows):
             self.rows = row
             hs.append(self.h)
             errors.append(_2norm(self.h, self.gte()))
+            # On the first iteration, we set the suppress_warnings
+            # flag so that only one message is printed
+            if not idx:
+                self.suppress_warnings = True
+        self.suppress_warnings = False
         errors = abs(np.array(errors))
         plt.loglog(hs, errors)
         plt.xlabel("h")
