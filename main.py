@@ -15,4 +15,4 @@ if __name__ == '__main__':
     alpha = BoundaryCondition(BCType.NEUMANN, 0)
     beta = BoundaryCondition(BCType.NEUMANN, 1)
     solver = PoissonSolver(f, rows=10, alpha=alpha, beta=beta, lower_bound=0, upper_bound=1, actual=u)
-    #solver.plot_h_vs_error()
+    solver.plot_h_vs_error()

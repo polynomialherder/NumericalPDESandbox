@@ -311,7 +311,7 @@ class PoissonSolver:
         solution = self.solve()
         integral = 0
         if self.least_squares_solution:
-            integral = np.cumsum(solution)[-1] / self.rows
+            integral = np.mean(solution)
         return solution - integral
 
     @property
