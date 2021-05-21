@@ -337,7 +337,7 @@ class PoissonSolver:
                 self.print_singular_warning()
                 self.least_squares_solution = True
                 return np.linalg.lstsq(self.A, self.F)[0]
-            raise Exception(f"The linear operator A is singular and has no solutions")
+            raise Exception("The linear operator A is singular and AU = F has no solutions")
 
 
     def solve_sparse(self):
