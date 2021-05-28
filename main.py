@@ -22,4 +22,4 @@ if __name__ == '__main__':
     beta = BoundaryCondition(BCType.PERIODIC, 0)
     solver = PoissonSolver(f, rows=10, alpha=alpha, beta=beta, lower_bound=0, upper_bound=2*math.pi, actual=u)
     solver.plot_h_vs_error()
-    
+

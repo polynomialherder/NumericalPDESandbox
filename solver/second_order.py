@@ -358,7 +358,7 @@ class PoissonSolver:
             # If we're not singular, we perform a more expensive check where we calculate
             # singular values
             if not self.suppress_warnings:
-                print(f"Calculating singular values -- this may take a moment")
+                print(f"Calculating singular values to determine if A is singular -- this may take a moment")
             singular_values = svds(self.A)[1]
             max_sv = max(singular_values)
             min_sv = min(singular_values)
