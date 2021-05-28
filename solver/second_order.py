@@ -11,10 +11,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from scipy.sparse import lil_matrix, csr_matrix
-from scipy.sparse.linalg import spsolve, lsqr
+from scipy.sparse.linalg import spsolve, lsqr, svds
 
 from solver.boundary import BCType, BoundaryCondition
 
+MACHINE_EPSILON = 2e-16
 
 class PoissonSolver:
 
@@ -175,13 +176,6 @@ class PoissonSolver:
             A[-1, -2] = 2/3
             A[-1, -1] = -2/3
 
-        if self.alpha.is_periodic or self.beta.is_periodic:
-            A[0, 0] = -2
-            A[0, 1] = 1
-            A[0, -1] = 1
-            A[-1, 0] = 1
-            A[-1, -2] = 1
-            A[-1, -1] = -2
         return A
 
 
@@ -192,6 +186,13 @@ class PoissonSolver:
         if self.beta.is_neumann:
             A[-1, -2] = 1
             A[-1, -1] = -1
+        if self.alpha.is_periodic or self.beta.is_periodic:
+            A[0, 0] = -2
+            A[0, 1] = 1
+            A[0, -1] = 1
+            A[-1, 0] = 1
+            A[-1, -2] = 1
+            A[-1, -1] = -2
         return A
 
 
@@ -314,6 +315,7 @@ class PoissonSolver:
             integral = np.mean(solution)
         return solution - integral
 
+
     @property
     def U(self):
         return self.solution
@@ -340,6 +342,30 @@ class PoissonSolver:
             raise Exception("The linear operator A is singular and AU = F has no solutions")
 
 
+    def is_singular_sparse(self):
+        """ Check if the matrix is singular by checking if calling spsolve returns
+            all nan. If so, then the matrix is singular. Unfortunately, this heuristic
+            sometimes fails because spsolve will occasionally return a garbage non-nan
+            solution even when the matrix is singular. So if this first check passes, we
+            need to perform a more expensive check by computing singular values, and comparing
+            their ratio against machine epsilon (which we're defining to be 2e-16).
+        """
+        maybe_solution = spsolve(self.A, self.F)
+        if self.edge_centered:
+            return False, maybe_solution
+        singular = np.isnan(min(maybe_solution))
+        if not singular:
+            # If we're not singular, we perform a more expensive check where we calculate
+            # singular values
+            if not self.suppress_warnings:
+                print(f"Calculating singular values -- this may take a moment")
+            singular_values = svds(self.A)[1]
+            max_sv = max(singular_values)
+            min_sv = min(singular_values)
+            singular = min_sv < MACHINE_EPSILON or MACHINE_EPSILON*(max_sv/min_sv) < 1
+        return singular, maybe_solution
+
+
     def solve_sparse(self):
         # FIXME
         # We check if the matrix is singular by calling spsolve, and checking if
@@ -355,8 +381,8 @@ class PoissonSolver:
         # Note that this isn't (alone) causing accuracy problems since for no test
         # rowsize used in self.plot_h_vs_error is spsolve returning something non-nan
         # (and therefore believing the matrix to be nonsingular).
-        maybe_solution = spsolve(self.A, self.F)
-        singular = np.isnan(min(maybe_solution))
+        singular, maybe_solution = self.is_singular_sparse()
+        # First, more efficient test
         if not singular:
             print(f"Not singular")
             self.least_squares_solution = False
@@ -390,7 +416,7 @@ class PoissonSolver:
 
     def gte(self):
         """ The global truncation error as defined by Leveque, namely
-            -(A^{-1})T where T is the local truncation error. 
+            -(A^{-1})T where T is the local truncation error.
         """
         return self.solution - self.apply_actual()
 
