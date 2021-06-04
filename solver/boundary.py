@@ -21,7 +21,7 @@ class BoundaryCondition:
         u is the solution of the PDE.
     """
 
-    def __init__(self, boundary_type, value, nth_derivative=0):
+    def __init__(self, boundary_type, value=None):
         expected_boundary_types = [
             BCType.DIRICHLET,
             BCType.NEUMANN,
@@ -32,13 +32,14 @@ class BoundaryCondition:
             error_str = "The boundary_type must be one of {expected_boundary_types}, got {boundary_type} instead."
             raise Exception(error_str)
 
+        if value is None and boundary_type != BCType.PERIODIC:
+            error_str = "A value is required for non-periodic boundary conditions"
+            raise Exception(error_str)
+
+        # TODO: Throw an exception if bc is dirichlet or Neumann and value is Nonetes
+
         self.boundary_type = boundary_type
         self.value = value
-
-        if self.boundary_type == BCType.PERIODIC and nth_derivative > 1:
-            raise Exception(f"Periodic boundary conditions may only be first or second derivatives")
-        self._nth_derivative = nth_derivative
-
 
 
     @property
@@ -58,4 +59,6 @@ class BoundaryCondition:
 
 
     def __repr__(self):
-        return f"<BoundaryCondition {self.boundary_type} value:{self.value}>"
+        if self.boundary_type != BCType.PERIODIC:
+            return f"<BoundaryCondition {self.boundary_type} value:{self.value}>"
+        return f"<BoundaryCondition {self.boundary_type}>"

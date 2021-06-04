@@ -359,30 +359,14 @@ class PoissonSolver:
             # singular values
             if not self.suppress_warnings:
                 print(f"Calculating singular values to determine if A is singular -- this may take a moment")
-            singular_values = svds(self.A)[1]
-            max_sv = max(singular_values)
-            min_sv = min(singular_values)
-            singular = min_sv < MACHINE_EPSILON or MACHINE_EPSILON*(max_sv/min_sv) < 1
+            max_sv = svds(self.A, k=1, which='LM')[1]
+            min_sv = svds(self.A, k=1, which='SM')[1]
+            singular = True if not min_sv else MACHINE_EPSILON*(max_sv/min_sv) < 1
         return singular, maybe_solution
 
 
     def solve_sparse(self):
-        # FIXME
-        # We check if the matrix is singular by calling spsolve, and checking if
-        # the minimum value of the array is nan. If it is, then the array was all
-        # nan, and so the matrix was singular, and we proceed with a last squares
-        # approximation instead. Otherwise, the matrix is nonsingular, in which case
-        # we just return the solution given by spsolve.
-        #
-        # This heuristic for checking if a matrix is singular is problematic as
-        # in certain cases spsolve will return a value even for singular matrices
-        # that differs substantially from what lsqr returns.
-        #
-        # Note that this isn't (alone) causing accuracy problems since for no test
-        # rowsize used in self.plot_h_vs_error is spsolve returning something non-nan
-        # (and therefore believing the matrix to be nonsingular).
         singular, maybe_solution = self.is_singular_sparse()
-        # First, more efficient test
         if not singular:
             print(f"Not singular")
             self.least_squares_solution = False
