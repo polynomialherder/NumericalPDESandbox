@@ -328,7 +328,6 @@ class PoissonSolver:
         # Since the boundary conditions in the setup above are periodic, F(x) = f(x)
         # for all x in the domain (there are no "correction" terms at the boundaries)
         transformed = fft(self.F)
-        shifted = fftshift(transformed)
         midpoint = self.rows // 2
         k = 0
         for idx, element in enumerate(transformed):
