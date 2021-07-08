@@ -10,6 +10,7 @@ from enum import Enum
 import matplotlib.pyplot as plt
 import numpy as np
 
+from scipy.fft import fft, ifft, fftfreq, fftshift
 from scipy.sparse import lil_matrix, csr_matrix
 from scipy.sparse.linalg import spsolve, lsqr, svds
 
@@ -22,7 +23,8 @@ class PoissonSolver:
     def __init__(self, f, rows=10,
                  alpha=0, beta=0,
                  lower_bound=0, upper_bound=1,
-                 actual=None, dense=False
+                 actual=None, dense=False,
+                 fft_solution=False
     ):
         """ Initialize a SimpleSecondOrderODE object. Given a source function
             f, transforms the problem into a linear equation AU = F where F = f(X)
@@ -40,6 +42,7 @@ class PoissonSolver:
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.actual = actual
+        self.fft_solution = fft_solution
         self.suppress_warnings = False
         self.least_squares_solution = False
         self.test_rows = [5120, 2560, 1280, 640, 320, 160, 80, 40, 20]
@@ -155,6 +158,9 @@ class PoissonSolver:
 
         if self.beta.is_neumann:
             F[-1] = F[-1] - self.beta.value/self.h
+
+        if self.alpha.is_periodic:
+            pass
 
         return F
 
@@ -309,11 +315,35 @@ class PoissonSolver:
 
     @property
     def solution(self):
+        if self.fft_solve=True:
+            return self.fft_solution
         solution = self.solve()
         integral = 0
         if self.least_squares_solution:
             integral = np.mean(solution)
         return solution - integral
+
+
+    def fft_solution(self):
+        # Since the boundary conditions in the setup above are periodic, F(x) = f(x)
+        # for all x in the domain (there are no "correction" terms at the boundaries)
+        transformed = fft(self.F)
+        shifted = fftshift(transformed)
+        midpoint = self.rows // 2
+        k = 0
+        for idx, element in enumerate(transformed):
+            if not k:
+                k += 1
+                continue
+            transformed[idx] += (element * (self.upper_bound - self.lower_bound)**2)/(4*np.pi*k**2)
+            print(k, transformed[idx], idx)
+            if idx == midpoint:
+                k = -midpoint
+                continue
+            k += 1
+        print("---")
+        return ifft(transformed)
+
 
 
     @property
