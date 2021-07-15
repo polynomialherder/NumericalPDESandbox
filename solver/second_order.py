@@ -24,7 +24,7 @@ class PoissonSolver:
                  alpha=0, beta=0,
                  lower_bound=0, upper_bound=1,
                  actual=None, dense=False,
-                 fft_solution=False
+                 fft=False
     ):
         """ Initialize a SimpleSecondOrderODE object. Given a source function
             f, transforms the problem into a linear equation AU = F where F = f(X)
@@ -42,7 +42,7 @@ class PoissonSolver:
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.actual = actual
-        self.fft_solution = fft_solution
+        self._fft = fft
         self.suppress_warnings = False
         self.least_squares_solution = False
         self.test_rows = [5120, 2560, 1280, 640, 320, 160, 80, 40, 20]
@@ -315,34 +315,39 @@ class PoissonSolver:
 
     @property
     def solution(self):
-        if self.fft_solve=True:
-            return self.fft_solution
         solution = self.solve()
         integral = 0
-        if self.least_squares_solution:
+        if self.least_squares_solution and not self.fft:
             integral = np.mean(solution)
         return solution - integral
 
 
-    def fft_solution(self):
-        # Since the boundary conditions in the setup above are periodic, F(x) = f(x)
-        # for all x in the domain (there are no "correction" terms at the boundaries)
-        transformed = fft(self.F)
-        midpoint = self.rows // 2
-        k = 0
-        for idx, element in enumerate(transformed):
-            if not k:
-                k += 1
-                continue
-            transformed[idx] += (element * (self.upper_bound - self.lower_bound)**2)/(4*np.pi*k**2)
-            print(k, transformed[idx], idx)
-            if idx == midpoint:
-                k = -midpoint
-                continue
-            k += 1
-        print("---")
-        return ifft(transformed)
+    @property
+    def fft(self):
+        return self.alpha.is_periodic or self._fft
 
+
+    @property
+    def fourier_coefficients(self):
+        return self.fft_kinv_squared*((self.upper_bound - self.lower_bound)**2)/(4*np.pi)
+
+
+    @property
+    def fft_kinv_squared(self):
+        midpoint = self.rows // 2
+        # Returns a generator with k-values corresponding to Python's fft transformation
+        # For example, given rows = 9, kinv_squared will return a generator containing the
+        # following values:
+        #   [0, (1/1)**2, (1/2)**2, (1/3)**2, (1/4)**2, (-1/4)**2, (-1/3)**2, (-1/2)**2, (-1/1)**2]
+        kinv_squared = (0 if not i else (1/i)**2 if i <= midpoint else 1/(self.rows-i)**2 for i in range(self.rows))
+        return np.fromiter(kinv_squared, dtype=float)
+
+
+    @property
+    def fft_solution(self):
+        transformed = fft(self.F)
+        transformed[0] = 0
+        return np.real(ifft(transformed*self.fourier_coefficients))
 
 
     @property
@@ -411,6 +416,8 @@ class PoissonSolver:
     def solve(self):
         """ Solve an ODE/PDE in the form AU = F for U
         """
+        if self.fft:
+            return self.fft_solution
         if self.dense:
             return self.solve_dense()
 
