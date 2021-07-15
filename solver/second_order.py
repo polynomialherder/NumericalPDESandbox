@@ -335,12 +335,12 @@ class PoissonSolver:
     @property
     def fft_kinv_squared(self):
         midpoint = self.rows // 2
-        # Returns a generator with k-values corresponding to Python's fft transformation
+        # kinv_squared is a generator with k-values in the right places per Python's fft transformation implementation
         # For example, given rows = 9, kinv_squared will return a generator containing the
         # following values:
         #   [0, (1/1)**2, (1/2)**2, (1/3)**2, (1/4)**2, (-1/4)**2, (-1/3)**2, (-1/2)**2, (-1/1)**2]
         kinv_squared = (0 if not i else (1/i)**2 if i <= midpoint else 1/(self.rows-i)**2 for i in range(self.rows))
-        return np.fromiter(kinv_squared, dtype=float)
+        return np.fromiter(kinv_squared, dtype=float, count=self.rows)
 
 
     @property
