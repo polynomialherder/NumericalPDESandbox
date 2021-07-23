@@ -329,7 +329,7 @@ class PoissonSolver:
 
     @property
     def fourier_coefficients(self):
-        return self.fft_kinv_squared*((self.upper_bound - self.lower_bound)**2)/(4*np.pi)
+        return self.fft_kinv_squared*((self.upper_bound - self.lower_bound)**2)/(4*np.pi**2)
 
 
     @property
@@ -347,6 +347,7 @@ class PoissonSolver:
     def fft_solution(self):
         transformed = fft(self.F)
         transformed[0] = 0
+        breakpoint()
         return np.real(ifft(transformed*self.fourier_coefficients))
 
 
