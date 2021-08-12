@@ -58,6 +58,21 @@ class PoissonSolver2D:
 
     @property
     def coefficients(self):
+        """ Compute the Fourier coefficients based on the scipy fft implementation
+
+        At a high level, this method works in the following way:
+        1. The row indices are computed (see the explanation below)
+        2. For each row index in the list of row indices, calculate the row of coefficients.
+           This entails computing i -- which is always equal to the row index -- and j, which
+           is computed in the same manner that the row indices were computed.
+        3. The Fourier coefficient for the i,jth term is then calculated. This coefficient is of
+           the form -1/(d_i + d_j), where d_i is the denominator term that depends on i, and likewise 
+           for d_j.
+        4. Transform the row into an array, and append it to an accumulator
+        5. Return the accumulator as an array
+
+        Note that this method performs some unnecessary extra computation -- see TODO item below
+        """
         midpoint = self.rows // 2
         # row_indices is a generator with k-values in the right places per Python's fft
         # transformation implementation. For example, given rows = 9, row_indices will
@@ -68,8 +83,8 @@ class PoissonSolver2D:
         denominator_term_y = lambda n: (2*math.pi*n/self.length_y)**2
         coefficients = []
         # TODO: We don't actually need to calculate j for each iteration here, since the value for j
-        #       will be the same for the given column index. We should cache the values for j to avoid
-        #       unnecessary recalculation
+        #       will be the same for the given column index. We should refactor this so that j is
+        #       computed only once.
         for row_index in row_indices:
             row = []
             for column_index in range(self.rows):
