@@ -8,34 +8,109 @@ from solver.boundary import BCType, BoundaryCondition
 from solver.second_order import PoissonSolver
 from solver.second_order import _2norm
 
-def fft_kinv_squared(k):
-        midpoint = k // 2
-        # kinv_squared is a generator with k-values in the right places per Python's fft transformation implementation
-        # For example, given rows = 9, kinv_squared will return a generator containing the
-        # following values:
-        #   [0, (1/1)**2, (1/2)**2, (1/3)**2, (1/4)**2, (-1/4)**2, (-1/3)**2, (-1/2)**2, (-1/1)**2]
-        kinv_squared = (0 if not i else (1/i)**2 if i <= midpoint else 1/(k-i)**2 for i in range(k))
-        return np.fromiter(kinv_squared, dtype=float, count=k)
+class PoissonSolver2D:
+
+    def __init__(self, f, rows, x_lower, x_upper, y_lower, y_upper):
+        self.f = f
+        self.rows = rows
+        self.x_lower = x_lower
+        self.x_upper = x_upper
+        self.y_lower = y_lower
+        self.y_upper = y_upper
+        # Note that x and y are initialized and refreshed when self.F is
+        # invoked
+        self.x = None
+        self.y = None
+
+    @property
+    def length_x(self):
+        return self.x_upper - self.x_lower
+
+    @property
+    def h(self):
+        return self.length_x/self.rows
+
+    @property
+    def length_y(self):
+        return self.y_upper - self.y_lower
+
+    @property
+    def l(self):
+        return self.length_y/self.rows
+
+    @property
+    def _x(self):
+        return np.linspace(self.x_lower + self.h/2, self.x_upper - self.h/2, self.rows, endpoint=True)
+
+    @property
+    def _y(self):
+        return np.linspace(self.y_lower + self.l/2, self.y_upper - self.l/2, self.rows, endpoint=True)
+
+    @property
+    def meshgrid(self):
+        return np.meshgrid(self._x, self._y)
+
+    @property
+    def F(self):
+        self.x, self.y = self.meshgrid
+        return self.f(self.x, self.y)
+
+
+    @property
+    def coefficients(self):
+        midpoint = self.rows // 2
+        # row_indices is a generator with k-values in the right places per Python's fft
+        # transformation implementation. For example, given rows = 9, row_indices will
+        # be a generator containing following values:
+        #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
+        row_indices = (i if i <= midpoint else (self.rows-i) for i in range(self.rows))
+        denominator_term_x = lambda n: (2*math.pi*n/self.length_x)**2
+        denominator_term_y = lambda n: (2*math.pi*n/self.length_y)**2
+        coefficients = []
+        # TODO: We don't actually need to calculate j for each iteration here, since the value for j
+        #       will be the same for the given column index. We should cache the values for j to avoid
+        #       unnecessary recalculation
+        for row_index in row_indices:
+            row = []
+            for column_index in range(self.rows):
+                if not row_index and not column_index:
+                    row.append(0)
+                    continue
+                elif column_index <= midpoint:
+                    j = column_index
+                else:
+                    j = self.rows - column_index
+                i = row_index
+                denominator = denominator_term_y(i) + denominator_term_x(j)
+                row.append(-1/denominator)
+            coefficients.append(
+                np.fromiter(row, dtype=float)
+            )
+        return np.array(coefficients)
+
+    @property
+    def transformed(self):
+        return fft2(self.F)
+
+    @property
+    def ifft(self):
+        return ifft2(self.transformed*self.coefficients)
+
+    @property
+    def U(self):
+        return np.real(self.ifft)
 
 
 
 if __name__ == '__main__':
-    # This "f" is just a placeholder until I come up with a valid test case
+    # This lambda is just placeholder value until I come up with a valid test case
     f = lambda x, y: -4*np.sin(2*x*y)
-    u = lambda x: np.sin(2*x)
 
-    # Assume a square domain, so upper_x = upper_y
-    # and lower_x = lower_y
-    upper_bound = 2*math.pi
-    lower_bound = 0
-    rows = 10
-    h = (upper_bound - lower_bound)/rows
-    # Create a discretized domain corresponding to the square domain
-    x_ = np.linspace(lower_bound + h/2, upper_bound - h/2, rows, endpoint=True)
-    y_ = np.linspace(lower_bound + h/2, upper_bound - h/2, rows, endpoint=True)
-    x, y = np.meshgrid(x_, y_)
-    F = f(x,y)
-    transformed = fft2(F)
-    kinv_squared = fft_kinv_squared(rows)
-    fourier_coefficients = ((upper_bound - lower_bound)**2)/(4*np.pi**2)
-    U = np.real(ifft2(transformed*fourier_coefficients))
+    # Initialize a 2D solver
+    p = PoissonSolver2D(f, 10, 0, 1, 0, 25)
+
+    # Inspect the complex solution (inverse fft2 of fft2(F)*fourier_coefficients prior to coercion to a real-valued array)
+    complex_solution = p.ifft
+
+    # Inspect the real solution
+    real_solution = p.U
