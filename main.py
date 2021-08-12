@@ -108,12 +108,17 @@ class PoissonSolver2D:
         return fft2(self.F)
 
     @property
-    def ifft(self):
+    def complex_solution(self):
         return ifft2(self.transformed*self.coefficients)
 
     @property
     def U(self):
-        return np.real(self.ifft)
+        return np.real(self.complex_solution)
+
+    @property
+    def solution(self):
+        """ Synonymous with PoissonSolver2D.U """
+        return self.U
 
 
 
@@ -125,7 +130,7 @@ if __name__ == '__main__':
     p = PoissonSolver2D(f, 10, 0, 1, 0, 25)
 
     # Inspect the complex solution (inverse fft2 of fft2(F)*fourier_coefficients prior to coercion to a real-valued array)
-    complex_solution = p.ifft
+    complex_solution = p.complex_solution
 
     # Inspect the real solution
     real_solution = p.U
