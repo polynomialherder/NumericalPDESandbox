@@ -7,7 +7,7 @@ from numpy.fft import fft2, ifft2
 
 class PoissonSolver2D:
 
-    def __init__(self, f, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper, actual):
+    def __init__(self, f, actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper):
         self.f = f
         self.rows_x = rows_x
         self.rows_y = rows_y
