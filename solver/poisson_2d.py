@@ -61,7 +61,7 @@ class PoissonSolver2D:
 
     def apply_actual(self):
         self.x, self.y = self.meshgrid
-        return self.actual(self.x, self.y, self.domain_area)
+        return self.actual(self.x, self.y)
 
 
     @property
