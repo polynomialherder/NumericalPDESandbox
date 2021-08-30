@@ -3,34 +3,31 @@ import math
 import numpy as np
 
 from solver.poisson_2d import PoissonSolver2D
+from matplotlib import pyplot as plt
+
+from sympy import Symbol, integrate, lambdify
 
 
-def trig_factory(n, m, L, H, periods=1, rows_x=10, rows_y=10):
-    coef_L = ((L)/(n*2*math.pi))**2
-    coef_H = ((H)/(m*2*math.pi))**2
+def trig_factory(n, m, L, H, rows_x=10, rows_y=10):
+    coef_L = ((n*2*math.pi)/(L))**2
+    coef_H = ((m*2*math.pi)/(H))**2
     f = lambda x, y: -(coef_L + coef_H)*np.sin(n*2*math.pi*x/L)*np.cos(m*2*math.pi*y/H)
     u = lambda x, y: np.sin(n*2*math.pi*x/L)*np.cos(m*2*math.pi*y/H)
-    period_x = L/n
-    period_y = H/m
-    return PoissonSolver2D(f, u, rows_x, rows_y, 0, period_x*periods, 0, period_y*periods)
+    period_x = L
+    period_y = H
+    return PoissonSolver2D(f, u, rows_x, rows_y, 0, period_x, 0, period_y)
+
+
+def polynomial_factory(L, H, rows_x=10, rows_y=10):
+    x = Symbol('x')
+    y = Symbol('y')
+    C = integrate((x**2*(x-L)**2)*(y**2*(y-H)**2), (x, 0, L), (y, 0, H))
+    C = float(C)
+    u = lambda x, y: x**2*(x-L)**2*y**2*(y-H)**2 - C/(H*L)
+    f = lambda x, y: 2*(x**2*(H-y)**2*(L-x)**2 + 4*x**2*y*(y-H)*(L-x)**2 + 4*x*y**2*(H-y)**2*(x-L) + y**2*(H-y)**2*(L-x)**2 + x**2*y**2*(H-y)**2 + x**2*y**2*(L-x)**2)
+    return PoissonSolver2D(f, u, rows_x, rows_y, 0, L, 0, H)
 
 
 if __name__ == '__main__':
-    f = lambda x, y: (12*x**2-24*x+8)*(y**4-4*y**3+4*y**2)+(x**4-4*x**3+4*x**2)*(12*y**2-24*y+8)
-    actual = lambda x, y: (x**4-4*x**3+4*x**2)*(y**4-4*y**3+4*y**2) - (256/225)
-
-    # Initialize a 2D solver
-    p = PoissonSolver2D(f, actual, 10, 10, 0, 1, 0, 2)
-
-    # Inspect the complex solution (inverse fft2 of fft2(F)*fourier_coefficients prior to coercion to a real-valued array)
-    complex_solution = p.complex_solution
-
-    # Inspect the real solution
-    real_solution = p.U
-
-    f2 = lambda x, y: 2*np.cos(2*x) + 2*np.cos(2*y)
-    actual2 = lambda x, y: (np.sin(x))**2 + (np.sin(y))**2-1
-    p2 = PoissonSolver2D(f2, actual2, 10, 10, 0, 2*math.pi, 0, 2*math.pi)
-
-    p3 = trig_factory(3, 4, 5, 5)
-    p4 = trig_factory(4, 2, 5, 5)
+    p = polynomial_factory(1
+    p = polynomial_factory(10, 20, rows_x=10000, rows_y=10000)
