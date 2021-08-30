@@ -29,5 +29,4 @@ def polynomial_factory(L, H, rows_x=10, rows_y=10):
 
 
 if __name__ == '__main__':
-    p = polynomial_factory(1
     p = polynomial_factory(10, 20, rows_x=10000, rows_y=10000)
