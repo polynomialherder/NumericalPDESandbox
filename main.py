@@ -14,5 +14,5 @@ if __name__ == '__main__':
     midpoint = len(F) // 2
     k = np.array([i if i <= midpoint else len(mesh)-i for i in range(len(F))])
     L = 1
-    coefficients = 2*math.pi*k/L
+    coefficients = 1j*2*math.pi*k/L
     solution = ifft(coefficients*transformed)
