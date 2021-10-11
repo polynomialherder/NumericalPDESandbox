@@ -138,4 +138,8 @@ class PoissonSolver2D:
         return self.pnorm(2)
 
     def pnorm(self, p):
-        return (sum(sum(self.error**2))*self.h*self.l)**1/p
+        # Absolute value before pth root
+        return (sum(sum(self.error**p))*self.h*self.l)**1/p
+
+    def twonorm_relative(self):
+        return self.twonorm / (sum(sum(self.U**2))*self.h*self.l)**1/2
