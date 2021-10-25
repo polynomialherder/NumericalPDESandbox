@@ -21,9 +21,11 @@ MACHINE_EPSILON = 2e-16
 
 class StokesSolver:
 
-    def __init__(self, f, g, f_actual, g_actual, lower_bound, upper_bound, alpha, beta, rows):
+    def __init__(self, f, g, f_actual, g_actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper, alpha, beta, rows):
         self.f = f
         self.g = g
+        self.rows_x = rows_x
+        self.rows_y = rows_y
         self.f_actual = f_actual
         self.g_actual = g_actual
         self.lower_bound = lower_bound
@@ -32,17 +34,161 @@ class StokesSolver:
         self.beta = beta
         self.rows = rows
 
+
+    @property
+    def midpoint_x(self):
+        return self.rows_x // 2
+
+    @property
+    def midpoint_y(self):
+        return self.rows_y // 2
+
+    @property
+    def indices_x(self):
+        return np.array([i if i <= midpoint_x else -(self.rows_x - i) for i in range(self.rows_x)])
+
+    @property
+    def indices_y(self):
+        return np.array([i if i <= midpoint_y else -(self.rows_y - i) for i in range(self.rows_y)])
+
+    @property
+    def length_x(self):
+        return self.x_upper - self.x_lower
+
+    @property
+    def length_y(self):
+        return self.y_upper - self.y_lower
+
+    @property
+    def h(self):
+        return self.length_x/self.rows_x
+
+    @property
+    def l(self):
+        return self.length_y/self.rows_y
+
+
+    @property
+    def _x(self):
+        return np.linspace(self.x_lower + self.h/2, self.x_upper - self.h/2, self.rows_x, endpoint=True)
+
+    @property
+    def _y(self):
+        return np.linspace(self.y_lower + self.l/2, self.y_upper - self.l/2, self.rows_y, endpoint=True)
+
+
+    @property
+    def meshgrid(self):
+        return np.meshgrid(self._x, self._y)
+
+
+    @property
+    def F(self):
+        self.x, self.y = self.meshgrid
+        return self.actual(self.x, self.y)
+
+
+    @property
+    def coefficients_Fx(self):
+        """ Compute the Fourier coefficients for the partial first derivative
+             with respect to x based on the scipy fft implementation
+        """
+        # row_indices is a generator with k-values in the right places per Python's fft
+        # transformation implementation. For example, given rows = 9, row_indices will
+        # be a generator containing following values:
+        #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
+        row_indices = (i if i <= self.midpoint_y else (self.rows_y-i) for i in range(self.rows_y))
+        coefficients = []
+        for row_index in row_indices:
+            row = []
+            for column_index in range(self.rows_x):
+                if not row_index and not column_index:
+                    row.append(0)
+                    continue
+                k = row_index
+                row.append(1j*2*math.pi*k/self.length_x)
+            coefficients.append(
+                np.fromiter(row, dtype=float)
+            )
+        return np.array(coefficients)
+
+    @property
+    def F_fft(self):
+        return fft2(self.F)
+
+    @property
+    def Fx_complex(self):
+        return ifft(self.F_fft*self.coefficients)
+
+    @property
+    def Fx_real(self):
+        return np.real(self.Fx_complex)
+
+    @property
+    def Fx(self):
+        return self.Fx_real
+
+
+    @property
+    def coefficients_Fy(self):
+        """ Compute the Fourier coefficients for the partial first derivative with respect to
+             y based on the scipy fft implementation
+        """
+        # row_indices is a generator with k-values in the right places per Python's fft
+        # transformation implementation. For example, given rows = 9, row_indices will
+        # be a generator containing following values:
+        #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
+        row_indices = (i if i <= self.midpoint_y else (self.rows_y-i) for i in range(self.rows_y))
+        coefficients = []
+        for row_index in row_indices:
+            row = []
+            for column_index in range(self.rows_x):
+                if not row_index and not column_index:
+                    row.append(0)
+                    continue
+                elif column_index <= midpoint_y:
+                    j = column_index
+                else:
+                    j = self.rows_x - column_index
+                row.append(1j*2*math.pi*j/self.length_y)
+            coefficients.append(
+                np.fromiter(row, dtype=float)
+            )
+        return np.array(coefficients)
+
+    @property
+    def F_fft(self):
+        return fft2(self.F)
+
+    @property
+    def Fx_complex(self):
+        return ifft(self.F_fft*self.coefficients)
+
+    @property
+    def Fx_real(self):
+        return np.real(self.Fx_complex)
+
+    @property
+    def Fx(self):
+        return self.Fx_real
+
+
+
+
+
+    def Fx(self):
+        transformed = fft(self.F)
+        coefficients = 1j*2*math.pi*self.indices_x/self.length_x
+        return ifft(coefficients*transformed)
+
+    def Fy(self):
+        transformed = fft(self.F)
+        
+
     def delta_p(self):
         # FIXME
         return self.Fx + self.Gy
 
-    def delta_f(self):
-        # FIXME
-        pass
-
-    def delta_g(self):
-        # FIXME
-        pass
 
     def mu(self):
         # FIXME
@@ -62,7 +208,7 @@ class StokesSolver:
             and cell-centered otherwise
         """
         return False
-
+0
     @property
     def mesh(self):
         """ Create an evenly spaced mesh of points representing the discretized
