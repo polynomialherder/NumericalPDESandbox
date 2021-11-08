@@ -15,7 +15,6 @@ from scipy.sparse import lil_matrix, csr_matrix
 from scipy.sparse.linalg import spsolve, lsqr, svds
 
 from solver.boundary import BCType, BoundaryCondition
-from solver.second_order_2d import PoissonSolver
 
 MACHINE_EPSILON = 2e-16
 
