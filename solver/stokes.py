@@ -10,7 +10,7 @@ from enum import Enum
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scipy.fft import fft, ifft, fftfreq, fftshift
+from scipy.fft import fft2, ifft2, fftfreq, fftshift
 from scipy.sparse import lil_matrix, csr_matrix
 from scipy.sparse.linalg import spsolve, lsqr, svds
 
@@ -21,18 +21,17 @@ MACHINE_EPSILON = 2e-16
 
 class StokesSolver:
 
-    def __init__(self, f, g, f_actual, g_actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper, alpha, beta, rows):
+    def __init__(self, f, g, f_actual, g_actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper):
         self.f = f
         self.g = g
         self.rows_x = rows_x
         self.rows_y = rows_y
         self.f_actual = f_actual
         self.g_actual = g_actual
-        self.lower_bound = lower_bound
-        self.upper_bound = upper_bound
-        self.alpha = alpha
-        self.beta = beta
-        self.rows = rows
+        self.x_lower = x_lower
+        self.x_upper = x_upper
+        self.y_lower = y_lower
+        self.y_upper = y_upper
 
 
     @property
@@ -44,12 +43,25 @@ class StokesSolver:
         return self.rows_y // 2
 
     @property
-    def indices_x(self):
-        return np.array([i if i <= midpoint_x else -(self.rows_x - i) for i in range(self.rows_x)])
+    def fourier_indices_x(self):
+        return np.array([i if i <= self.midpoint_x else -(self.rows_x - i) for i in range(self.rows_x)])
 
     @property
-    def indices_y(self):
-        return np.array([i if i <= midpoint_y else -(self.rows_y - i) for i in range(self.rows_y)])
+    def fourier_indices_y(self):
+        return np.array([i if i <= self.midpoint_y else -(self.rows_y - i) for i in range(self.rows_y)])
+
+    @property
+    def fourier_k(self):
+        k = []
+        for index in self.fourier_indices_x:
+            k.append(
+                [index for _ in range(self.rows_x)]
+            )
+        return np.array(k)
+
+    @property
+    def fourier_j(self):
+        return np.array([self.fourier_indices_y for _ in range(self.rows_y)])
 
     @property
     def length_x(self):
@@ -85,8 +97,7 @@ class StokesSolver:
     @property
     def F(self):
         self.x, self.y = self.meshgrid
-        return self.actual(self.x, self.y)
-
+        return self.f(self.x, self.y)
 
     @property
     def coefficients_Fx(self):
@@ -97,40 +108,26 @@ class StokesSolver:
         # transformation implementation. For example, given rows = 9, row_indices will
         # be a generator containing following values:
         #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
-        row_indices = (i if i <= self.midpoint_y else (self.rows_y-i) for i in range(self.rows_y))
-        coefficients = []
-        for row_index in row_indices:
-            row = []
-            for column_index in range(self.rows_x):
-                if not row_index and not column_index:
-                    row.append(0)
-                    continue
-                k = row_index
-                row.append(1j*2*math.pi*k/self.length_x)
-            coefficients.append(
-                np.fromiter(row, dtype=float)
-            )
-        return np.array(coefficients)
+        eig_factor = 1j*2*math.pi/self.length_x
+        return eig_factor*self.fourier_indices_x
 
     @property
     def F_fft(self):
         return fft2(self.F)
 
     @property
-    def Fx_complex(self):
-        return ifft(self.F_fft*self.coefficients)
-
-    @property
-    def Fx_real(self):
-        return np.real(self.Fx_complex)
-
-    @property
-    def Fx(self):
-        return self.Fx_real
+    def Fx_fourier(self):
+        return self.F_fft*self.coefficients_Fx
 
 
     @property
-    def coefficients_Fy(self):
+    def G(self):
+        self.x, self.y = self.meshgrid
+        return self.g(self.x, self.y)
+
+
+    @property
+    def coefficients_Gy(self):
         """ Compute the Fourier coefficients for the partial first derivative with respect to
              y based on the scipy fft implementation
         """
@@ -138,56 +135,35 @@ class StokesSolver:
         # transformation implementation. For example, given rows = 9, row_indices will
         # be a generator containing following values:
         #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
-        row_indices = (i if i <= self.midpoint_y else (self.rows_y-i) for i in range(self.rows_y))
-        coefficients = []
-        for row_index in row_indices:
-            row = []
-            for column_index in range(self.rows_x):
-                if not row_index and not column_index:
-                    row.append(0)
-                    continue
-                elif column_index <= midpoint_y:
-                    j = column_index
-                else:
-                    j = self.rows_x - column_index
-                row.append(1j*2*math.pi*j/self.length_y)
-            coefficients.append(
-                np.fromiter(row, dtype=float)
-            )
-        return np.array(coefficients)
+        eig_factor = 1j*2*math.pi/self.length_y
+        return eig_factor*self.fourier_indices_y
 
     @property
-    def F_fft(self):
-        return fft2(self.F)
+    def G_fft(self):
+        return fft2(self.G)
 
     @property
-    def Fx_complex(self):
-        return ifft(self.F_fft*self.coefficients)
+    def Gy_fourier(self):
+        return self.G_fft*self.coefficients_Gy
+
 
     @property
-    def Fx_real(self):
-        return np.real(self.Fx_complex)
+    def H_complex(self):
+        return ifft2(self.Fx_fourier + self.Gy_fourier)
 
     @property
-    def Fx(self):
-        return self.Fx_real
+    def H_real(self):
+        return np.real(self.H_complex)
+
+    @property
+    def H(self):
+        return self.H_real
 
 
+    @property
+    def p(self):
+        pass
 
-
-
-    def Fx(self):
-        transformed = fft(self.F)
-        coefficients = 1j*2*math.pi*self.indices_x/self.length_x
-        return ifft(coefficients*transformed)
-
-    def Fy(self):
-        transformed = fft(self.F)
-        
-
-    def delta_p(self):
-        # FIXME
-        return self.Fx + self.Gy
 
 
     def mu(self):
@@ -208,7 +184,7 @@ class StokesSolver:
             and cell-centered otherwise
         """
         return False
-0
+
     @property
     def mesh(self):
         """ Create an evenly spaced mesh of points representing the discretized
