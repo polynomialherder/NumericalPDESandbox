@@ -4,7 +4,6 @@ import numpy as np
 
 from solver.stokes import StokesSolver
 
-
 if __name__ == '__main__':
     s = StokesSolver(
         f = lambda x: x,
