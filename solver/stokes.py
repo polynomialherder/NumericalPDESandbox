@@ -1,7 +1,5 @@
 """
-This module consists of abstractions for solving a simple linear second order differential equation of the form
-f(x) = u''(x). The methods implemented are based on the discussion in Finite Difference Methods for Ordinary and Partial
-Differential Equations by Randall Leveque, sections 2.1-2.10.
+This module consists of abstractions for solving Stokes equation in 2D
 """
 import math
 
@@ -20,7 +18,7 @@ MACHINE_EPSILON = 2e-16
 
 class StokesSolver:
 
-    def __init__(self, f, g, f_actual, g_actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper):
+    def __init__(self, f, g, f_actual, g_actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper, mu=1):
         self.f = f
         self.g = g
         self.rows_x = rows_x
@@ -31,6 +29,7 @@ class StokesSolver:
         self.x_upper = x_upper
         self.y_lower = y_lower
         self.y_upper = y_upper
+        self.mu = mu
 
 
     @property
@@ -99,7 +98,7 @@ class StokesSolver:
         return self.f(self.x, self.y)
 
     @property
-    def coefficients_Fx(self):
+    def coefficients_Dx(self):
         """ Compute the Fourier coefficients for the partial first derivative
              with respect to x based on the scipy fft implementation
         """
@@ -108,15 +107,15 @@ class StokesSolver:
         # be a generator containing following values:
         #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
         eig_factor = 1j*2*math.pi/self.length_x
-        return eig_factor*self.fourier_indices_x
+        return eig_factor*self.fourier_k
 
     @property
-    def F_fft(self):
+    def F_fourier(self):
         return fft2(self.F)
 
     @property
     def Fx_fourier(self):
-        return self.F_fft*self.coefficients_Fx
+        return self.F_fourier*self.coefficients_Dx
 
 
     @property
@@ -126,7 +125,7 @@ class StokesSolver:
 
 
     @property
-    def coefficients_Gy(self):
+    def coefficients_Dy(self):
         """ Compute the Fourier coefficients for the partial first derivative with respect to
              y based on the scipy fft implementation
         """
@@ -135,15 +134,45 @@ class StokesSolver:
         # be a generator containing following values:
         #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
         eig_factor = 1j*2*math.pi/self.length_y
-        return eig_factor*self.fourier_indices_y
-
-    @property
-    def G_fft(self):
-        return fft2(self.G)
+        return eig_factor*self.fourier_j
 
     @property
     def Gy_fourier(self):
-        return self.G_fft*self.coefficients_Gy
+        return self.G_fourier*self.coefficients_Dy
+
+    @property
+    def integrate(self, matrix):
+        denominator_term_x = lambda n: (2*math.pi*n/self.length_x)**2
+        denominator_term_y = lambda n: (2*math.pi*n/self.length_y)**2
+        coefficients = denominator_term_x(self.fourier_k) + denominator_term_y(self.fourier_j)
+        return matrix*coefficients
+
+    @property
+    def p_fourier(self):
+        return self.integrate(self.Fx_fourier + self.Gy_fourier)
+
+    @property
+    def px_fourier(self):
+        return self.p_fourier*self.coefficients_Dx
+
+    @property
+    def py_fourier(self):
+        return self.p_fourier*self.coefficients_Dy
+
+
+    @property
+    def u_fourier(self):
+        grad_u = (1/self.mu)*(self.px_fourier - self.F_fourier)
+        return self.integrate(grad_u)
+
+    @property
+    def v_fourier(self):
+        grad_v = (1/self.mu)*(self.py_fourier - self.G_fourier)
+        return self.integrate(grad_v)
+
+    @property
+    def G_fourier(self):
+        return fft2(self.G)
 
 
     @property
@@ -157,122 +186,3 @@ class StokesSolver:
     @property
     def H(self):
         return self.H_real
-
-
-    @property
-    def p(self):
-        pass
-
-
-
-    def mu(self):
-        # FIXME
-        pass
-
-    @property
-    def endpoint_factor(self):
-        return -1 if self.edge_centered else 0
-
-    @property
-    def h(self):
-        return (self.upper_bound - self.lower_bound) / (self.rows - self.endpoint_factor)
-
-    @property
-    def edge_centered(self):
-        """ Our grid is edge-centered if either boundary condition is Dirichlet,
-            and cell-centered otherwise
-        """
-        return False
-
-    @property
-    def mesh(self):
-        """ Create an evenly spaced mesh of points representing the discretized
-            domain of our problem
-        """
-        if self.edge_centered:
-            return np.linspace(
-                self.lower_bound + self.h,
-                self.upper_bound,
-                self.rows,
-                endpoint=False
-            )
-        # If our grid is not edge centered, it's cell centered
-        return np.linspace(
-            self.lower_bound + self.h/2,
-            self.upper_bound - self.h/2,
-            self.rows,
-            endpoint=True
-        )
-
-    @property
-    def F(self):
-        """ Given an ODE/PDE AU = F, return the source term F
-        """
-        F = np.apply_along_axis(self.f, 0, self.mesh)
-        F = self.apply_boundary_conditions_f(F)
-        return F
-
-    @property
-    def G(self):
-        """ Given an ODE/PDE AU = F, return the source term F
-        """
-        G = np.apply_along_axis(self.g, 0, self.mesh)
-        G = self.apply_boundary_conditions_f(G)
-        return G
-
-    @property
-    def Fx(self):
-        # FIXME
-        transformed = fft(self.F)
-        transformed[0] = 0
-
-    @property
-    def Gy(self):
-        # FIXME
-        transformed = fft(self.G)
-        transformed[0] = 0
-
-    def apply_boundary_conditions_f(self, F):
-        if self.edge_centered:
-            return self.build_edge_centered_f(F)
-        return self.build_cell_centered_f(F)
-
-
-    def build_edge_centered_f(self, F):
-        if self.alpha.is_dirichlet:
-            F[0] = F[0] - self.coef*self.alpha.value
-
-        elif self.alpha.is_neumann:
-            F[0] = F[0] + 2*self.alpha.value/(3*self.h)
-
-        if self.beta.is_dirichlet:
-            F[-1] = F[-1] - self.coef*self.beta.value
-
-        elif self.beta.is_neumann:
-            F[-1] = F[-1] - 2*self.beta.value/(3*self.h)
-
-        return F
-
-
-    def build_cell_centered_f(self, F):
-        if self.alpha.is_neumann:
-            F[0] = F[0] + self.alpha.value/self.h
-
-        if self.beta.is_neumann:
-            F[-1] = F[-1] - self.beta.value/self.h
-
-        if self.alpha.is_periodic:
-            pass
-
-        return F
-
-
-    @property
-    def coef(self):
-        """ A constant representing the value 1/h^2
-        """
-        return 1/self.h**2
-
-
-
-
