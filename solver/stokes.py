@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from scipy.fft import fft2, ifft2, fftfreq, fftshift
+from scipy.linalg import norm
 from scipy.sparse import lil_matrix, csr_matrix
 from scipy.sparse.linalg import spsolve, lsqr, svds
 
@@ -18,13 +19,13 @@ MACHINE_EPSILON = 2e-16
 
 class StokesSolver:
 
-    def __init__(self, f, g, f_actual, g_actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper, mu=1):
+    def __init__(self, f, g, u_actual, v_actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper, mu=1):
         self.f = f
         self.g = g
+        self.u_actual_ = u_actual
+        self.v_actual_ = v_actual
         self.rows_x = rows_x
         self.rows_y = rows_y
-        self.f_actual = f_actual
-        self.g_actual = g_actual
         self.x_lower = x_lower
         self.x_upper = x_upper
         self.y_lower = y_lower
@@ -88,6 +89,27 @@ class StokesSolver:
 
 
     @property
+    def v_actual(self):
+        x, y = self.meshgrid
+        return self.v_actual_(x, y)
+
+    @property
+    def u_actual(self):
+        x, y = self.meshgrid
+        return self.u_actual_(x, y)
+
+
+    def error(self, v1, v2, p=2):
+        return norm(v1 - v2, p)
+
+    def error_v(self, p=2):
+        return self.error(self.v_actual, self.v, p=p)
+
+    def error_u(self, p=2):
+        return self.error(self.u_actual, self.u, p=p)
+
+
+    @property
     def meshgrid(self):
         return np.meshgrid(self._x, self._y)
 
@@ -140,7 +162,6 @@ class StokesSolver:
     def Gy_fourier(self):
         return self.G_fourier*self.coefficients_Dy
 
-    @property
     def integrate(self, matrix):
         denominator_term_x = lambda n: (2*math.pi*n/self.length_x)**2
         denominator_term_y = lambda n: (2*math.pi*n/self.length_y)**2
@@ -161,14 +182,55 @@ class StokesSolver:
 
 
     @property
+    def p_ifft(self):
+        return ifft2(self.p_fourier)
+
+    @property
+    def p(self):
+        return np.real(self.p_ifft)
+
+    @property
+    def px_ifft(self):
+        return ifft2(self.px_fourier)
+
+    @property
+    def px(self):
+        return np.real(self.px_ifft)
+
+    @property
+    def py_ifft(self):
+        return ifft2(self.py_fourier)
+
+    @property
+    def py(self):
+        return np.real(self.py_ifft)
+
+
+    @property
     def u_fourier(self):
         grad_u = (1/self.mu)*(self.px_fourier - self.F_fourier)
         return self.integrate(grad_u)
 
     @property
+    def u_ifft(self):
+        return ifft2(self.u_fourier)
+
+    @property
+    def u(self):
+        return np.real(self.u_ifft)
+
+    @property
     def v_fourier(self):
         grad_v = (1/self.mu)*(self.py_fourier - self.G_fourier)
         return self.integrate(grad_v)
+
+    @property
+    def v_ifft(self):
+        return ifft2(self.v_fourier)
+
+    @property
+    def v(self):
+        return ifft2(self.v_ifft)
 
     @property
     def G_fourier(self):
