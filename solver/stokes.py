@@ -4,6 +4,7 @@ This module consists of abstractions for solving Stokes equation in 2D
 import math
 
 from enum import Enum
+from functools import cached_property
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -90,33 +91,32 @@ class StokesSolver:
 
     @property
     def v_actual(self):
-        x, y = self.meshgrid
-        return self.v_actual_(x, y)
+        return self.v_actual_(self.x, self.y)
 
     @property
     def u_actual(self):
-        x, y = self.meshgrid
-        return self.u_actual_(x, y)
-
-
-    def error(self, v1, v2, p=2):
-        return norm(v1 - v2, p)
-
-    def error_v(self, p=2):
-        return self.error(self.v_actual, self.v, p=p)
-
-    def error_u(self, p=2):
-        return self.error(self.u_actual, self.u, p=p)
+        return self.u_actual_(self.x, self.y)
 
 
     @property
+    def x(self):
+        x, _ = self.meshgrid
+        return x
+
+
+    @property
+    def y(self):
+        _, y = self.meshgrid
+        return y
+
+
+    @cached_property
     def meshgrid(self):
         return np.meshgrid(self._x, self._y)
 
 
     @property
     def F(self):
-        self.x, self.y = self.meshgrid
         return self.f(self.x, self.y)
 
     @property
@@ -142,7 +142,6 @@ class StokesSolver:
 
     @property
     def G(self):
-        self.x, self.y = self.meshgrid
         return self.g(self.x, self.y)
 
 
@@ -179,7 +178,6 @@ class StokesSolver:
     @property
     def py_fourier(self):
         return self.p_fourier*self.coefficients_Dy
-
 
     @property
     def p_ifft(self):
@@ -248,3 +246,29 @@ class StokesSolver:
     @property
     def H(self):
         return self.H_real
+
+    def error(self, v1, v2, p=2):
+        return norm(v1 - v2, p)
+
+    def error_v(self, p=2):
+        return self.error(self.v_actual, self.v, p=p)
+
+    def error_u(self, p=2):
+        return self.error(self.u_actual, self.u, p=p)
+
+    def plot_error_u(self):
+        error = self.u - self.u_actual
+        plt.contourf(self.x, self.y, np.absolute(error))
+        plt.colorbar()
+        plt.show()
+
+    def plot_error_v(self):
+        error = self.u - self.u_actual
+        plt.contourf(self.x, self.y, np.absolute(error))
+        plt.colorbar()
+        plt.show()
+
+    def plot_u(self):
+        plt.contourf(self.x, self.y, self.u)
+        plt.colorbar()
+        plt.show()
