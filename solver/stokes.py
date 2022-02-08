@@ -169,7 +169,7 @@ class StokesSolver:
 
     @property
     def p_fourier(self):
-        return self.integrate(self.Fx_fourier + self.Gy_fourier)
+        return self.integrate(-self.Fx_fourier + -self.Gy_fourier)
 
     @property
     def px_fourier(self):
