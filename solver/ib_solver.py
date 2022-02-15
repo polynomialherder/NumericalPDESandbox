@@ -73,6 +73,5 @@ if __name__ == '__main__':
     )
     s = IBSolver(m)
 
-    for i in range(200):
+    for i in range(10):
         s.update_membrane_position()
-        s.plot()
