@@ -20,11 +20,12 @@ MACHINE_EPSILON = 2e-16
 
 class StokesSolver:
 
-    def __init__(self, f, g, u_actual, v_actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper, mu=1):
+    def __init__(self, f, g, u_actual, v_actual, p_actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper, mu=1):
         self.f = f
         self.g = g
         self.u_actual_ = u_actual
         self.v_actual_ = v_actual
+        self.p_actual_ = p_actual
         self.rows_x = rows_x
         self.rows_y = rows_y
         self.x_lower = x_lower
@@ -97,6 +98,10 @@ class StokesSolver:
     def u_actual(self):
         return self.u_actual_(self.x, self.y)
 
+    @property
+    def p_actual(self):
+        return self.p_actual_(self.x, self.y)
+
 
     @property
     def x(self):
@@ -161,15 +166,18 @@ class StokesSolver:
     def Gy_fourier(self):
         return self.G_fourier*self.coefficients_Dy
 
-    def integrate(self, matrix):
+    def poisson_solve_fft(self, matrix):
         denominator_term_x = lambda n: (2*math.pi*n/self.length_x)**2
         denominator_term_y = lambda n: (2*math.pi*n/self.length_y)**2
         coefficients = denominator_term_x(self.fourier_k) + denominator_term_y(self.fourier_j)
-        return matrix*coefficients
+        coefficients[0, 0] = 1
+        matcoef = -matrix/coefficients
+        matcoef[0, 0] = 0
+        return matcoef
 
     @property
     def p_fourier(self):
-        return self.integrate(-self.Fx_fourier + -self.Gy_fourier)
+        return self.poisson_solve_fft(-self.Fx_fourier + -self.Gy_fourier)
 
     @property
     def px_fourier(self):
@@ -206,8 +214,8 @@ class StokesSolver:
 
     @property
     def u_fourier(self):
-        grad_u = (1/self.mu)*(self.px_fourier - self.F_fourier)
-        return self.integrate(grad_u)
+        grad_u = (1/self.mu)*(self.px_fourier + self.F_fourier)
+        return self.poisson_solve_fft(grad_u)
 
     @property
     def u_ifft(self):
@@ -219,8 +227,8 @@ class StokesSolver:
 
     @property
     def v_fourier(self):
-        grad_v = (1/self.mu)*(self.py_fourier - self.G_fourier)
-        return self.integrate(grad_v)
+        grad_v = (1/self.mu)*(self.py_fourier + self.G_fourier)
+        return self.poisson_solve_fft(grad_v)
 
     @property
     def v_ifft(self):
@@ -256,19 +264,5 @@ class StokesSolver:
     def error_u(self, p=2):
         return self.error(self.u_actual, self.u, p=p)
 
-    def plot_error_u(self):
-        error = self.u - self.u_actual
-        plt.contourf(self.x, self.y, np.absolute(error))
-        plt.colorbar()
-        plt.show()
-
-    def plot_error_v(self):
-        error = self.u - self.u_actual
-        plt.contourf(self.x, self.y, np.absolute(error))
-        plt.colorbar()
-        plt.show()
-
-    def plot_u(self):
-        plt.contourf(self.x, self.y, self.u)
-        plt.colorbar()
-        plt.show()
+    def error_p(self, p=2):
+        return self.error(self.p_actual, self.p, p=p)
