@@ -20,8 +20,6 @@ def arc_length(x, y):
     return (arc_length_left(x, y) + arc_length_right(x, y))/2
 
 def delta_spread(r, h):
-    if abs(r) < 2*h:
-        return 0
     return (1/h)*(1 + np.cos(np.pi*r/(2*h)))
 
 
