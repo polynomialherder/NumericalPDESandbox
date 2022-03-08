@@ -68,12 +68,6 @@ def spread_while(fluid_x, fluid_y, membrane_x, membrane_y, fn):
         # Likewise for floored_y and yk_dy
         correction_term_x = -1 if floored_x == xk_dx else 0
         correction_term_y = -1 if floored_y == yk_dy else 0
-        x_range = range(
-            floored_x - 1 + correction_term_x, floored_x + 3 + correction_term_x
-        )
-        y_range = range(
-            floored_y - 1 + correction_term_y, floored_y + 3 + correction_term_y
-        )
         end_x = floored_x + 3 + correction_term_x
         start_y = floored_y - 1 + correction_term_y
         end_y = floored_y + 3 + correction_term_y
@@ -237,9 +231,6 @@ def spread_naive(fluid_x, fluid_y, membrane_x, membrane_y, fn):
         y_range = range(
             floored_y - 1 + correction_term_y, floored_y + 3 + correction_term_y
         )
-        end_x = floored_x + 3 + correction_term_x
-        start_y = floored_y - 1 + correction_term_y
-        end_y = floored_y + 3 + correction_term_y
         i = floored_x - 1 + correction_term_x
         for i, j in product(x_range, y_range):
             Xk = fluid_x[j, i]
