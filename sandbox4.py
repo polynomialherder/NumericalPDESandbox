@@ -3,27 +3,9 @@ from dataclasses import dataclass
 import numpy as np
 
 
-def head_repr(arr, show_n=3):
-    first_n = arr[:n]
-    return ", ".join(first_n)
-
-
-@dataclass
-class ForceConstant:
-
-    x: np.ndarray
-    y: np.ndarray
-    show_n: int = 3
-
-    def __repr__(self):
-        x_summary = f"x={head_repr(self.x, show_n=self.show_n)}"
-        y_summary = f"y={head_repr(self.y, show_n=self.show_n)}"
-        return f"<ForceConstant {x_summary} : {y_summary}>"
-
-
 class Membrane:
 
-    def __init__(self, X, Y, k: ForceConstant):
+    def __init__(self, X, Y, k):
         self.X = X
         self.Y = Y
         self.k = k
@@ -74,11 +56,11 @@ class Membrane:
 
     @property
     def Fx(self):
-        return self.k.x*(self.tau_left_x - self.tau_right_x)/self.dS
+        return self.k*(self.tau_left_x - self.tau_right_x)/self.dS
 
     @property
     def Fy(self):
-        return self.k.y*(self.tau_left_y - self.tau_right_y)/self.dS
+        return self.k*(self.tau_left_y - self.tau_right_y)/self.dS
 
 
 if __name__ == '__main__':
