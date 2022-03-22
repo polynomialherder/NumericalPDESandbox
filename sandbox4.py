@@ -43,11 +43,11 @@ class Membrane:
         return self.tau_left_y + self.tau_right_y
 
     @property
-    def arc_length_left(self):
+    def dS_left(self):
         return np.sqrt(self.left_differences(self.X)**2 + self.left_differences(self.Y)**2)
 
     @property
-    def arc_length_right(self):
+    def dS_right(self):
         return np.sqrt(self.right_differences(self.X)**2 + self.right_differences(self.Y)**2)
 
     @property
@@ -56,11 +56,11 @@ class Membrane:
 
     @property
     def Fx(self):
-        return self.k*(self.tau_left_x - self.tau_right_x)/self.dS
+        return self.k*(self.tau_right_x - self.tau_left_x)/self.dS
 
     @property
     def Fy(self):
-        return self.k*(self.tau_left_y - self.tau_right_y)/self.dS
+        return self.k*(self.tau_right_y - self.tau_left_y)/self.dS
 
 
 if __name__ == '__main__':
