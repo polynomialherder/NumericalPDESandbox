@@ -18,7 +18,7 @@ class ForceConstant:
     def __repr__(self):
         x_summary = f"x={head_repr(self.x, show_n=self.show_n)}"
         y_summary = f"y={head_repr(self.y, show_n=self.show_n)}"
-        return f"<ForceConstant {x_summary} : y_summary>"
+        return f"<ForceConstant {x_summary} : {y_summary}>"
 
 
 class Membrane:
