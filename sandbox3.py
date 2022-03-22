@@ -8,10 +8,9 @@ def delta_spread(r, h):
     return (1 / h) * (1 + np.cos(np.pi * r / (2 * h))) / 4
 
 
-def interp(fluid_x, fluid_y, membrane_x, membrane_y, fn):
+def interp(fluid_x, fluid_y, membrane_x, membrane_y, f):
     dx = 1 / fluid_x[0].size
     dy = 1 / fluid_y[0].size
-    f = fn(fluid_x, fluid_y)
     F = np.zeros(membrane_x.shape)
     zipped = zip(membrane_x, membrane_y)
     for membrane_idx, xk_yk in enumerate(zipped):
@@ -53,6 +52,7 @@ if __name__ == "__main__":
 
     # Define a nonsense force function
     force = lambda x, y: np.sign(x) + np.sign(y)
+    f = force(X, Y)
 
     # Define grid
     L = 1
@@ -66,4 +66,4 @@ if __name__ == "__main__":
 
     xv, yv = np.meshgrid(Xp, Yp)
 
-    F = interp(xv, yv, X, Y, force)
+    F = interp(xv, yv, X, Y, f)

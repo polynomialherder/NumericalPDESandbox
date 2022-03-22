@@ -52,11 +52,10 @@ def spread_mask(fluid_x, fluid_y, membrane_x, membrane_y, fn):
     return f
 
 
-def spread_while(fluid_x, fluid_y, membrane_x, membrane_y, fn):
+def spread_while(fluid_x, fluid_y, membrane_x, membrane_y, F):
     dS = arc_length(membrane_x, membrane_y)
     dx = 1 / fluid_x[0].size
     dy = 1 / fluid_y[0].size
-    F = fn(membrane_x, membrane_y)
     f = np.zeros(fluid_x.shape)
     for xk, yk, ds, Fk in zip(membrane_x, membrane_y, dS, F):
         xk_dx = (xk - dx / 2) / dx
@@ -208,12 +207,10 @@ def spread_unrolled(fluid_x, fluid_y, membrane_x, membrane_y, fn):
     return f
 
 
-# @profile
-def spread_naive(fluid_x, fluid_y, membrane_x, membrane_y, fn):
+def spread(fluid_x, fluid_y, membrane_x, membrane_y, F):
     dS = arc_length(membrane_x, membrane_y)
     dx = 1 / fluid_x[0].size
     dy = 1 / fluid_y[0].size
-    F = fn(membrane_x, membrane_y)
     f = np.zeros(fluid_x.shape)
     for xk, yk, ds, Fk in zip(membrane_x, membrane_y, dS, F):
         xk_dx = (xk - dx / 2) / dx
@@ -248,6 +245,7 @@ if __name__ == "__main__":
 
     # Define a nonsense force function
     force = lambda x, y: np.sign(x) + np.sign(y)
+    F = force(X, Y)
 
     # Define grid
     L = 1
@@ -262,8 +260,4 @@ if __name__ == "__main__":
     xv, yv = np.meshgrid(Xp, Yp)
 
     runs = 100
-    for fn in ["spread_naive", "spread_while", "spread_unrolled"]:
-        function_call = f"{fn}(xv, yv, X, Y, force)"
-        print(f"Profiling {fn} on a {Nx} x {Ny} grid")
-        seconds = timeit.timeit(function_call, number=runs, globals=globals())
-        print(f"{fn} finished in {seconds/runs}s on average over {runs} runs")
+    f = spread(xv, yv, X, Y, force)
