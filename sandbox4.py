@@ -2,65 +2,112 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from scipy.linalg import norm
+
+from solver.stokes import StokesSolver
+
+
+class SimulationStep:
+
+    def __init__(self, t, membrane, fluid, solver):
+        self.membrane = membrane
+        self.fluid = fluid
+        self.solver = solver
+        self.t = t
+
 
 class Membrane:
 
-    def __init__(self, X, Y, k):
+    def __init__(self, X, Y, k, p=2):
         self.X = X
         self.Y = Y
         self.k = k
+        self.p = p
 
-    def left_differences(self, vec):
+
+    def difference_minus(self, vec):
         shifted = np.roll(vec, -1)
         return shifted - vec
 
-    def right_differences(self, vec):
+    def difference_plus(self, vec):
         shifted = np.roll(vec, 1)
         return shifted - vec
 
     @property
-    def tau_left_x(self):
-        return self.left_differences(self.X)
+    def difference_minus_x(self):
+        return self.difference_minus(self.X)
 
     @property
-    def tau_right_x(self):
-        return self.right_differences(self.X)
+    def difference_plus_x(self):
+        return self.difference_plus(self.X)
 
     @property
-    def tau_left_y(self):
-        return self.left_differences(self.Y)
+    def norm_minus_x(self):
+        return norm(self.difference_minus_x, self.p)
 
     @property
-    def tau_right_y(self):
-        return self.right_differences(self.Y)
+    def norm_plus_x(self):
+        return norm(self.difference_minus_x, self.p)
+
+    @property
+    def tau_minus_x(self):
+        return self.difference_minus_x/self.norm_minus_x
+
+    @property
+    def tau_plus_x(self):
+        return self.difference_plus_x / self.norm_plus_x
+
+    @property
+    def difference_minus_y(self):
+        return self.difference_minus(self.Y)
+
+    @property
+    def difference_plus_y(self):
+        return self.difference_plus(self.Y)
+
+    @property
+    def norm_minus_y(self):
+        return norm(self.difference_minus_y, self.p)
+
+    @property
+    def norm_plus_y(self):
+        return norm(self.difference_plus_y, self.p)
+
+    @property
+    def tau_minus_y(self):
+        return self.difference_minus_y / self.norm_minus_y
+
+    @property
+    def tau_plus_y(self):
+        return self.difference_plus_y / self.norm_plus_y
 
     @property
     def tau_x(self):
-        return self.tau_left_x + self.tau_right_x
+        return self.tau_minus_x + self.tau_plus_x
 
     @property
     def tau_y(self):
-        return self.tau_left_y + self.tau_right_y
+        return self.tau_minus_y + self.tau_plus_y
 
     @property
-    def dS_left(self):
-        return np.sqrt(self.left_differences(self.X)**2 + self.left_differences(self.Y)**2)
+    def dS_minus(self):
+        return np.sqrt(self.difference_minus_x**2 + self.difference_minus_y**2)
 
     @property
-    def dS_right(self):
-        return np.sqrt(self.right_differences(self.X)**2 + self.right_differences(self.Y)**2)
+    def dS_plus(self):
+        return np.sqrt(self.difference_plus_x**2 + self.difference_plus_y**2)
 
     @property
     def dS(self):
-        return (self.arc_length_left + self.arc_length_right)/2
+        return (self.arc_length_minus + self.arc_length_plus)/2
 
     @property
     def Fx(self):
-        return self.k*(self.tau_right_x - self.tau_left_x)/self.dS
+        return self.k*(self.tau_plus_x - self.tau_minus_x)/self.dS
 
     @property
     def Fy(self):
-        return self.k*(self.tau_right_y - self.tau_left_y)/self.dS
+        return self.k*(self.tau_plus_y - self.tau_minus_y)/self.dS
 
 
 if __name__ == '__main__':
