@@ -16,23 +16,26 @@ from scipy.sparse.linalg import spsolve, lsqr, svds
 
 from solver.boundary import BCType, BoundaryCondition
 
-MACHINE_EPSILON = 2e-16
-
 class StokesSolver:
-
-    def __init__(self, f, g, u_actual, v_actual, p_actual, rows_x, rows_y, x_lower, x_upper, y_lower, y_upper, mu=1):
-        self.f = f
-        self.g = g
-        self.u_actual_ = u_actual
-        self.v_actual_ = v_actual
-        self.p_actual_ = p_actual
-        self.rows_x = rows_x
-        self.rows_y = rows_y
-        self.x_lower = x_lower
-        self.x_upper = x_upper
-        self.y_lower = y_lower
-        self.y_upper = y_upper
+    def __init__(
+        self,
+        xv,
+        yv,
+        F,
+        G,
+        mu=1
+    ):
+        self.x = xv
+        self.y = yv
+        self.h = (self.x[0][1] - self.x[0][0])/self.x[0].size
+        self.l = (self.y[1][0] - self.y[0][0])/len(self.y)
+        self.F = F
+        self.G = G
         self.mu = mu
+        self.length_x = self.x[0][-1] - self.x[0][0]
+        self.length_y = self.y[-1][0] - self.y[0][0]
+        self.rows_x = self.x[0].size
+        self.rows_y = len(self.y)
 
 
     @property
@@ -45,50 +48,51 @@ class StokesSolver:
 
     @property
     def fourier_indices_x(self):
-        return np.array([i if i <= self.midpoint_x else -(self.rows_x - i) for i in range(self.rows_x)])
+        return np.array(
+            [
+                i if i <= self.midpoint_x else -(self.rows_x - i)
+                for i in range(self.rows_x)
+            ]
+        )
 
     @property
     def fourier_indices_y(self):
-        return np.array([i if i <= self.midpoint_y else -(self.rows_y - i) for i in range(self.rows_y)])
+        return np.array(
+            [
+                i if i <= self.midpoint_y else -(self.rows_y - i)
+                for i in range(self.rows_y)
+            ]
+        )
 
     @property
     def fourier_k(self):
         k = []
         for index in self.fourier_indices_x:
-            k.append(
-                [index for _ in range(self.rows_x)]
-            )
+            k.append([index for _ in range(self.rows_x)])
         return np.array(k)
 
     @property
     def fourier_j(self):
         return np.array([self.fourier_indices_y for _ in range(self.rows_y)])
 
-    @property
-    def length_x(self):
-        return self.x_upper - self.x_lower
-
-    @property
-    def length_y(self):
-        return self.y_upper - self.y_lower
-
-    @property
-    def h(self):
-        return self.length_x/self.rows_x
-
-    @property
-    def l(self):
-        return self.length_y/self.rows_y
-
 
     @property
     def _x(self):
-        return np.linspace(self.x_lower + self.h/2, self.x_upper - self.h/2, self.rows_x, endpoint=True)
+        return np.linspace(
+            self.x_lower + self.h / 2,
+            self.x_upper - self.h / 2,
+            self.rows_x,
+            endpoint=True,
+        )
 
     @property
     def _y(self):
-        return np.linspace(self.y_lower + self.l/2, self.y_upper - self.l/2, self.rows_y, endpoint=True)
-
+        return np.linspace(
+            self.y_lower + self.l / 2,
+            self.y_upper - self.l / 2,
+            self.rows_y,
+            endpoint=True,
+        )
 
     @property
     def v_actual(self):
@@ -102,39 +106,17 @@ class StokesSolver:
     def p_actual(self):
         return self.p_actual_(self.x, self.y)
 
-
-    @property
-    def x(self):
-        x, _ = self.meshgrid
-        return x
-
-
-    @property
-    def y(self):
-        _, y = self.meshgrid
-        return y
-
-
-    @cached_property
-    def meshgrid(self):
-        return np.meshgrid(self._x, self._y)
-
-
-    @property
-    def F(self):
-        return self.f(self.x, self.y)
-
     @property
     def coefficients_Dx(self):
-        """ Compute the Fourier coefficients for the partial first derivative
-             with respect to x based on the scipy fft implementation
+        """Compute the Fourier coefficients for the partial first derivative
+        with respect to x based on the scipy fft implementation
         """
         # row_indices is a generator with k-values in the right places per Python's fft
         # transformation implementation. For example, given rows = 9, row_indices will
         # be a generator containing following values:
         #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
-        eig_factor = 1j*2*math.pi/self.length_x
-        return eig_factor*self.fourier_k
+        eig_factor = 1j * 2 * math.pi / self.length_x
+        return eig_factor * self.fourier_k
 
     @property
     def F_fourier(self):
@@ -142,36 +124,32 @@ class StokesSolver:
 
     @property
     def Fx_fourier(self):
-        return self.F_fourier*self.coefficients_Dx
-
-
-    @property
-    def G(self):
-        return self.g(self.x, self.y)
-
+        return self.F_fourier * self.coefficients_Dx
 
     @property
     def coefficients_Dy(self):
-        """ Compute the Fourier coefficients for the partial first derivative with respect to
-             y based on the scipy fft implementation
+        """Compute the Fourier coefficients for the partial first derivative with respect to
+        y based on the scipy fft implementation
         """
         # row_indices is a generator with k-values in the right places per Python's fft
         # transformation implementation. For example, given rows = 9, row_indices will
         # be a generator containing following values:
         #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
-        eig_factor = 1j*2*math.pi/self.length_y
-        return eig_factor*self.fourier_j
+        eig_factor = 1j * 2 * math.pi / self.length_y
+        return eig_factor * self.fourier_j
 
     @property
     def Gy_fourier(self):
-        return self.G_fourier*self.coefficients_Dy
+        return self.G_fourier * self.coefficients_Dy
 
     def poisson_solve_fft(self, matrix):
-        denominator_term_x = lambda n: (2*math.pi*n/self.length_x)**2
-        denominator_term_y = lambda n: (2*math.pi*n/self.length_y)**2
-        coefficients = denominator_term_x(self.fourier_k) + denominator_term_y(self.fourier_j)
+        denominator_term_x = lambda n: (2 * math.pi * n / self.length_x) ** 2
+        denominator_term_y = lambda n: (2 * math.pi * n / self.length_y) ** 2
+        coefficients = denominator_term_x(self.fourier_k) + denominator_term_y(
+            self.fourier_j
+        )
         coefficients[0, 0] = 1
-        matcoef = -matrix/coefficients
+        matcoef = -matrix / coefficients
         matcoef[0, 0] = 0
         return matcoef
 
@@ -181,11 +159,11 @@ class StokesSolver:
 
     @property
     def px_fourier(self):
-        return self.p_fourier*self.coefficients_Dx
+        return self.p_fourier * self.coefficients_Dx
 
     @property
     def py_fourier(self):
-        return self.p_fourier*self.coefficients_Dy
+        return self.p_fourier * self.coefficients_Dy
 
     @property
     def p_ifft(self):
@@ -211,10 +189,9 @@ class StokesSolver:
     def py(self):
         return np.real(self.py_ifft)
 
-
     @property
     def u_fourier(self):
-        grad_u = (1/self.mu)*(self.px_fourier + self.F_fourier)
+        grad_u = (1 / self.mu) * (self.px_fourier + self.F_fourier)
         return self.poisson_solve_fft(grad_u)
 
     @property
@@ -227,7 +204,7 @@ class StokesSolver:
 
     @property
     def v_fourier(self):
-        grad_v = (1/self.mu)*(self.py_fourier + self.G_fourier)
+        grad_v = (1 / self.mu) * (self.py_fourier + self.G_fourier)
         return self.poisson_solve_fft(grad_v)
 
     @property
@@ -236,12 +213,11 @@ class StokesSolver:
 
     @property
     def v(self):
-        return ifft2(self.v_ifft)
+        return np.real(self.v_ifft)
 
     @property
     def G_fourier(self):
         return fft2(self.G)
-
 
     @property
     def H_complex(self):

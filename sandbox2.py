@@ -260,4 +260,4 @@ if __name__ == "__main__":
     xv, yv = np.meshgrid(Xp, Yp)
 
     runs = 100
-    f = spread(xv, yv, X, Y, force)
+    f = spread(xv, yv, X, Y, F)
