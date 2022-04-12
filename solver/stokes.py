@@ -8,7 +8,10 @@ from functools import cached_property
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pyfftw
+import scipy
 
+#from pyfftw.interfaces.scipy_fftpack import fft2, ifft2
 from scipy.fft import fft2, ifft2, fftfreq, fftshift
 from scipy.linalg import norm
 from scipy.sparse import lil_matrix, csr_matrix
@@ -16,13 +19,17 @@ from scipy.sparse.linalg import spsolve, lsqr, svds
 
 from solver.boundary import BCType, BoundaryCondition
 
+#scipy.fft.set_backend(pyfftw.interfaces.scipy_fft)
+#pyfftw.interfaces.cache.enable()
+#pyfftw.interfaces.cache.set_keepalive_time(2)
+
 class StokesSolver:
     def __init__(
         self,
         xv,
         yv,
-        F,
-        G,
+        F=None,
+        G=None,
         mu=1
     ):
         self.x = xv
@@ -38,15 +45,15 @@ class StokesSolver:
         self.rows_y = len(self.y)
 
 
-    @property
+    @cached_property
     def midpoint_x(self):
         return self.rows_x // 2
 
-    @property
+    @cached_property
     def midpoint_y(self):
         return self.rows_y // 2
 
-    @property
+    @cached_property
     def fourier_indices_x(self):
         return np.array(
             [
@@ -55,7 +62,7 @@ class StokesSolver:
             ]
         )
 
-    @property
+    @cached_property
     def fourier_indices_y(self):
         return np.array(
             [
@@ -64,19 +71,19 @@ class StokesSolver:
             ]
         )
 
-    @property
+    @cached_property
     def fourier_k(self):
         k = []
         for index in self.fourier_indices_x:
             k.append([index for _ in range(self.rows_x)])
         return np.array(k)
 
-    @property
+    @cached_property
     def fourier_j(self):
         return np.array([self.fourier_indices_y for _ in range(self.rows_y)])
 
 
-    @property
+    @cached_property
     def _x(self):
         return np.linspace(
             self.x_lower + self.h / 2,
@@ -85,7 +92,7 @@ class StokesSolver:
             endpoint=True,
         )
 
-    @property
+    @cached_property
     def _y(self):
         return np.linspace(
             self.y_lower + self.l / 2,
@@ -106,7 +113,7 @@ class StokesSolver:
     def p_actual(self):
         return self.p_actual_(self.x, self.y)
 
-    @property
+    @cached_property
     def coefficients_Dx(self):
         """Compute the Fourier coefficients for the partial first derivative
         with respect to x based on the scipy fft implementation
@@ -126,7 +133,7 @@ class StokesSolver:
     def Fx_fourier(self):
         return self.F_fourier * self.coefficients_Dx
 
-    @property
+    @cached_property
     def coefficients_Dy(self):
         """Compute the Fourier coefficients for the partial first derivative with respect to
         y based on the scipy fft implementation
