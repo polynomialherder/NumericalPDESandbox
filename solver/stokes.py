@@ -102,14 +102,17 @@ class StokesSolver:
         )
 
     @property
+    #@profile
     def v_actual(self):
         return self.v_actual_(self.x, self.y)
 
     @property
+    #@profile
     def u_actual(self):
         return self.u_actual_(self.x, self.y)
 
     @property
+    #@profile
     def p_actual(self):
         return self.p_actual_(self.x, self.y)
 
@@ -126,10 +129,12 @@ class StokesSolver:
         return eig_factor * self.fourier_k
 
     @property
+    #@profile
     def F_fourier(self):
         return fft2(self.F)
 
     @property
+    #@profile
     def Fx_fourier(self):
         return self.F_fourier * self.coefficients_Dx
 
@@ -146,83 +151,106 @@ class StokesSolver:
         return eig_factor * self.fourier_j
 
     @property
+    #@profile
     def Gy_fourier(self):
         return self.G_fourier * self.coefficients_Dy
 
-    def poisson_solve_fft(self, matrix):
+
+    @cached_property
+    def denominator_terms(self):
         denominator_term_x = lambda n: (2 * math.pi * n / self.length_x) ** 2
         denominator_term_y = lambda n: (2 * math.pi * n / self.length_y) ** 2
         coefficients = denominator_term_x(self.fourier_k) + denominator_term_y(
             self.fourier_j
         )
         coefficients[0, 0] = 1
-        matcoef = -matrix / coefficients
+        return coefficients
+
+    #@profile
+    def poisson_solve_fft(self, matrix):
+        matcoef = -matrix / self.denominator_terms
         matcoef[0, 0] = 0
         return matcoef
 
     @property
+    #@profile
     def p_fourier(self):
         return self.poisson_solve_fft(-self.Fx_fourier + -self.Gy_fourier)
 
     @property
+    #@profile
     def px_fourier(self):
         return self.p_fourier * self.coefficients_Dx
 
     @property
+    #@profile
     def py_fourier(self):
         return self.p_fourier * self.coefficients_Dy
 
     @property
+    #@profile
     def p_ifft(self):
         return ifft2(self.p_fourier)
 
     @property
+    #@profile
     def p(self):
         return np.real(self.p_ifft)
 
     @property
+    #@profile
     def px_ifft(self):
         return ifft2(self.px_fourier)
 
     @property
+    #@profile
     def px(self):
         return np.real(self.px_ifft)
 
     @property
+    #@profile
     def py_ifft(self):
         return ifft2(self.py_fourier)
 
     @property
+    #@profile
     def py(self):
         return np.real(self.py_ifft)
 
     @property
+    #@profile
     def u_fourier(self):
         grad_u = (1 / self.mu) * (self.px_fourier + self.F_fourier)
         return self.poisson_solve_fft(grad_u)
 
     @property
+    #@profile
     def u_ifft(self):
         return ifft2(self.u_fourier)
 
     @property
+    #@profile
     def u(self):
         return np.real(self.u_ifft)
 
     @property
+    #@profile
     def v_fourier(self):
         grad_v = (1 / self.mu) * (self.py_fourier + self.G_fourier)
         return self.poisson_solve_fft(grad_v)
 
     @property
+    #@profile
     def v_ifft(self):
         return ifft2(self.v_fourier)
 
     @property
+    #@profile
     def v(self):
         return np.real(self.v_ifft)
 
     @property
+    #@profile
     def G_fourier(self):
         return fft2(self.G)
 

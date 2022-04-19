@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     t_end = 0.05
     t = 0.0
-    while t < t_end:
+    while t < 10*dt:
         print(f"{t=}")
-        simulation.step().plot()
+        simulation.step()
         t += dt

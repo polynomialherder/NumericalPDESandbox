@@ -15,24 +15,21 @@ def delta_spread(r, h):
 @dataclass
 class SimulationStep:
 
-    Fx: np.array
-    Fy: np.array
+    xv: np.array
+    yv: np.array
     fx: np.array
     fy: np.array
-    u: np.array
-    v: np.array
-    p: np.array
-    U: np.array
-    V: np.array
     X: np.array
     Y: np.array
     t: float
 
     def plot(self):
-        plt.quiver(self.X, self.Y, self.Fx, self.Fy)
+        plt.quiver(self.xv, self.yv, self.fx, self.fy)
+        plt.plot(self.X, self.Y, 'o')
         plt.title(f"t={self.t}")
         plt.draw()
         plt.pause(0.1)
+        plt.clf()
 
 
 class Simulation:
@@ -43,6 +40,7 @@ class Simulation:
         self.dt = dt
         self.mu = mu
         self.t = t
+
 
     def calculate_forces(self):
         return self.membrane.Fx, self.membrane.Fy
@@ -60,6 +58,7 @@ class Simulation:
         self.membrane.X += self.dt*U
         self.membrane.Y += self.dt*V
 
+    @profile
     def step(self):
         Fx, Fy = self.calculate_forces()
         fx, fy = self.spread_forces(Fx, Fy)
@@ -67,7 +66,9 @@ class Simulation:
         U, V = self.calculate_velocities(fx, fy)
         self.update_membrane_positions(U, V)
         self.t += self.dt
-        return SimulationStep(Fx, Fy, fx, fy, u, v, p, U, V, self.membrane.X, self.membrane.Y, self.t)
+        return SimulationStep(
+            self.fluid.xv, self.fluid.yv, fx, fy, self.membrane.X, self.membrane.Y, self.t
+        )
 
 
 class Fluid:
@@ -91,6 +92,7 @@ class Fluid:
     def shape(self):
         return self.xv.shape
 
+    @profile
     def spread(self, F):
 
         dx = 1 / self.xv[0].size
@@ -134,6 +136,7 @@ class Membrane:
         self.fluid = fluid
 
 
+    @profile
     def interp(self, f):
         if self.fluid is None:
             helpful_message = """Membrane has not been registered to any fluid; cannot interp
@@ -180,11 +183,11 @@ class Membrane:
 
 
     def difference_minus(self, vec):
-        shifted = np.roll(vec, -1)
-        return shifted - vec
+        shifted = np.roll(vec, 1)
+        return vec - shifted
 
     def difference_plus(self, vec):
-        shifted = np.roll(vec, 1)
+        shifted = np.roll(vec, -1)
         return shifted - vec
 
     @property
