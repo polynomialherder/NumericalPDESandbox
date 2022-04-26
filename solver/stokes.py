@@ -8,7 +8,6 @@ from functools import cached_property
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pyfftw
 import scipy
 
 from scipy.fft import fft2, ifft2, fftfreq, fftshift
