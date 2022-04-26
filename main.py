@@ -12,10 +12,13 @@ from solver.ib_solver import Membrane, Fluid, Simulation
 
 if __name__ == '__main__':
     # Define membrane components
-    theta = np.linspace(0, 2 * np.pi, 2000)
+    theta = np.linspace(0, 2 * np.pi, 280)
     theta = theta[0:-1]
     X = np.cos(theta) / 3 + 1 / 2
     Y = np.sin(theta) / 3 + 1 / 2
+
+    # fluid:    64 X 128
+    # membrane: 140
 
     # Define a nonsense force function
     force = lambda x, y: np.sign(x) + np.sign(y)
@@ -24,8 +27,8 @@ if __name__ == '__main__':
     # Define fluid grid
     L = 1
     H = 1
-    Nx = 1000
-    Ny = 1000
+    Nx = 256
+    Ny = 256
     dx = L / Nx
     dy = H / Ny
     Xp = np.linspace(dx / 2, L - dx / 2, Nx)
@@ -42,7 +45,11 @@ if __name__ == '__main__':
 
     t_end = 0.05
     t = 0.0
-    while t < 10*dt:
-        print(f"{t=}")
-        simulation.step()
-        t += dt
+    import time
+    s0 = time.time()
+    # while t < 10*dt:
+    #     print(f"{t=}")
+    #     simulation.step().plot_pressure()
+    #     t += dt
+    s1 = time.time()
+    print(f"{s1 - s0:,}s")

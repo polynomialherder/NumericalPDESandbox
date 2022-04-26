@@ -11,7 +11,6 @@ import numpy as np
 import pyfftw
 import scipy
 
-#from pyfftw.interfaces.scipy_fftpack import fft2, ifft2
 from scipy.fft import fft2, ifft2, fftfreq, fftshift
 from scipy.linalg import norm
 from scipy.sparse import lil_matrix, csr_matrix
@@ -19,9 +18,6 @@ from scipy.sparse.linalg import spsolve, lsqr, svds
 
 from solver.boundary import BCType, BoundaryCondition
 
-#scipy.fft.set_backend(pyfftw.interfaces.scipy_fft)
-#pyfftw.interfaces.cache.enable()
-#pyfftw.interfaces.cache.set_keepalive_time(2)
 
 class StokesSolver:
     def __init__(
@@ -30,7 +26,10 @@ class StokesSolver:
         yv,
         F=None,
         G=None,
-        mu=1
+        mu=1,
+        u_actual=None,
+        v_actual=None,
+        p_actual=None
     ):
         self.x = xv
         self.y = yv
@@ -43,6 +42,9 @@ class StokesSolver:
         self.length_y = self.y[-1][0] - self.y[0][0]
         self.rows_x = self.x[0].size
         self.rows_y = len(self.y)
+        self.u_actual = u_actual
+        self.v_actual = v_actual
+        self.p_actual = p_actual
 
 
     @cached_property
@@ -101,21 +103,6 @@ class StokesSolver:
             endpoint=True,
         )
 
-    @property
-    #@profile
-    def v_actual(self):
-        return self.v_actual_(self.x, self.y)
-
-    @property
-    #@profile
-    def u_actual(self):
-        return self.u_actual_(self.x, self.y)
-
-    @property
-    #@profile
-    def p_actual(self):
-        return self.p_actual_(self.x, self.y)
-
     @cached_property
     def coefficients_Dx(self):
         """Compute the Fourier coefficients for the partial first derivative
@@ -129,12 +116,10 @@ class StokesSolver:
         return eig_factor * self.fourier_k
 
     @property
-    #@profile
     def F_fourier(self):
         return fft2(self.F)
 
     @property
-    #@profile
     def Fx_fourier(self):
         return self.F_fourier * self.coefficients_Dx
 
@@ -151,7 +136,6 @@ class StokesSolver:
         return eig_factor * self.fourier_j
 
     @property
-    #@profile
     def Gy_fourier(self):
         return self.G_fourier * self.coefficients_Dy
 
@@ -166,81 +150,66 @@ class StokesSolver:
         coefficients[0, 0] = 1
         return coefficients
 
-    #@profile
     def poisson_solve_fft(self, matrix):
         matcoef = -matrix / self.denominator_terms
         matcoef[0, 0] = 0
         return matcoef
 
     @property
-    #@profile
     def p_fourier(self):
         return self.poisson_solve_fft(-self.Fx_fourier + -self.Gy_fourier)
 
     @property
-    #@profile
     def px_fourier(self):
         return self.p_fourier * self.coefficients_Dx
 
     @property
-    #@profile
     def py_fourier(self):
         return self.p_fourier * self.coefficients_Dy
 
     @property
-    #@profile
     def p_ifft(self):
         return ifft2(self.p_fourier)
 
     @property
-    #@profile
     def p(self):
         return np.real(self.p_ifft)
 
     @property
-    #@profile
     def px_ifft(self):
         return ifft2(self.px_fourier)
 
     @property
-    #@profile
     def px(self):
         return np.real(self.px_ifft)
 
     @property
-    #@profile
     def py_ifft(self):
         return ifft2(self.py_fourier)
 
     @property
-    #@profile
     def py(self):
         return np.real(self.py_ifft)
 
     @property
-    #@profile
     def u_fourier(self):
         grad_u = (1 / self.mu) * (self.px_fourier + self.F_fourier)
         return self.poisson_solve_fft(grad_u)
 
     @property
-    #@profile
     def u_ifft(self):
         return ifft2(self.u_fourier)
 
     @property
-    #@profile
     def u(self):
         return np.real(self.u_ifft)
 
     @property
-    #@profile
     def v_fourier(self):
         grad_v = (1 / self.mu) * (self.py_fourier + self.G_fourier)
         return self.poisson_solve_fft(grad_v)
 
     @property
-    #@profile
     def v_ifft(self):
         return ifft2(self.v_fourier)
 
