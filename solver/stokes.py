@@ -75,44 +75,23 @@ class StokesSolver:
     @cached_property
     def fourier_k(self):
         k = []
-        for index in self.fourier_indices_x:
-            k.append([index for _ in range(self.rows_x)])
+        for index in self.fourier_indices_y:
+            k.append([index for _ in range(self.rows_y)])
         return np.array(k)
+
 
     @cached_property
     def fourier_j(self):
-        return np.array([self.fourier_indices_y for _ in range(self.rows_y)])
+        return np.array([self.fourier_indices_y for _ in range(self.rows_x)])
 
-
-    @cached_property
-    def _x(self):
-        return np.linspace(
-            self.x_lower + self.h / 2,
-            self.x_upper - self.h / 2,
-            self.rows_x,
-            endpoint=True,
-        )
-
-    @cached_property
-    def _y(self):
-        return np.linspace(
-            self.y_lower + self.l / 2,
-            self.y_upper - self.l / 2,
-            self.rows_y,
-            endpoint=True,
-        )
 
     @cached_property
     def coefficients_Dx(self):
         """Compute the Fourier coefficients for the partial first derivative
         with respect to x based on the scipy fft implementation
         """
-        # row_indices is a generator with k-values in the right places per Python's fft
-        # transformation implementation. For example, given rows = 9, row_indices will
-        # be a generator containing following values:
-        #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
-        eig_factor = 1j * 2 * math.pi / self.length_x
-        return eig_factor * self.fourier_k
+        eig_factor = 2j * math.pi / self.length_x
+        return eig_factor * self.fourier_j
 
     @property
     def F_fourier(self):
@@ -127,12 +106,8 @@ class StokesSolver:
         """Compute the Fourier coefficients for the partial first derivative with respect to
         y based on the scipy fft implementation
         """
-        # row_indices is a generator with k-values in the right places per Python's fft
-        # transformation implementation. For example, given rows = 9, row_indices will
-        # be a generator containing following values:
-        #   [0, 1, 2, 3, 4, -4, -3, -2, -1]
-        eig_factor = 1j * 2 * math.pi / self.length_y
-        return eig_factor * self.fourier_j
+        eig_factor = 2j * math.pi / self.length_y
+        return eig_factor * self.fourier_k
 
     @property
     def Gy_fourier(self):
@@ -143,8 +118,8 @@ class StokesSolver:
     def denominator_terms(self):
         denominator_term_x = lambda n: (2 * math.pi * n / self.length_x) ** 2
         denominator_term_y = lambda n: (2 * math.pi * n / self.length_y) ** 2
-        coefficients = denominator_term_x(self.fourier_k) + denominator_term_y(
-            self.fourier_j
+        coefficients = denominator_term_x(self.fourier_j) + denominator_term_y(
+            self.fourier_k
         )
         coefficients[0, 0] = 1
         return coefficients
