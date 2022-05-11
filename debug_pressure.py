@@ -50,7 +50,7 @@ def test_factory(L, H, N):
 if __name__ == '__main__':
     f = lambda x, y: (x - 0.5)
     g = lambda x, y: (y - 0.5)
-    p = lambda x, y: 0.5*((x - 0.5)**2 + (y - 0.5)**2) - 1/6
+    p = lambda x, y: 0.5*((x - 0.5)**2 + (y - 0.5)**2) - 1/12
 
     X = np.linspace(0, 1, 1000)
     Y = np.linspace(0, 1, 1000)
