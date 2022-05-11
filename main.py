@@ -12,7 +12,7 @@ from solver.ib_solver import Membrane, Fluid, Simulation
 
 if __name__ == '__main__':
     # Define membrane components
-    theta = np.linspace(0, 2 * np.pi, 280)
+    theta = np.linspace(0, 2 * np.pi, 560)
     theta = theta[0:-1]
     X = np.cos(theta) / 3 + 1 / 2
     Y = np.sin(theta) / 3 + 1 / 2
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     t = 0.0
     import time
     s0 = time.time()
-    while t < 10*dt:
+    while t < 1*dt:
         print(f"{t=}")
         step = simulation.step()
         step.plot_pressure()
@@ -80,7 +80,8 @@ if __name__ == '__main__':
     while t < 15000*dt:
         print(f"{t=}")
         step = simulation.step()
-        step.plot_pressure()
+        print(simulation.fluid.solver.divhat)
+        step.plot()
         t += dt
     s1 = time.time()
     print(f"{s1 - s0:,}s")

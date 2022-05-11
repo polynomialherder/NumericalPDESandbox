@@ -171,6 +171,10 @@ class StokesSolver:
         return self.poisson_solve_fft(grad_u)
 
     @property
+    def divhat(self):
+        return self.coefficients_Dx*self.u_fourier + self.coefficients_Dy*self.v_fourier
+
+    @property
     def u_ifft(self):
         return ifft2(self.u_fourier)
 
