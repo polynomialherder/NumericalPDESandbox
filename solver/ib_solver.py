@@ -23,20 +23,27 @@ class SimulationStep:
     p: float
 
     def plot(self):
-        plt.quiver(self.xv, self.yv, self.fx, self.fy)
         plt.plot(self.X, self.Y, 'o')
-        plt.title(f"t={self.t}")
+        ax = plt.gca()
+        ax.set_title(f"t={self.t}")
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.grid()
         plt.draw()
         plt.pause(0.1)
         plt.clf()
 
 
     def plot_pressure(self):
-        plt.clf()
-        cm = plt.pcolor(self.p)
+        cm = plt.pcolor(self.xv, self.yv, self.p)
+        ax = plt.gca()
+        ax.set_title(f"t={self.t}")
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
         plt.colorbar(cm)
-        plt.title(f"t={self.t}")
-        plt.show()
+        plt.draw()
+        plt.pause(0.1)
+        plt.clf()
 
 
 class Simulation:
@@ -90,8 +97,8 @@ class Fluid:
         self.membrane.fluid = self
 
     def stokes_solve(self, fx, fy):
-        self.solver.F = fx
-        self.solver.G = fy
+        self.solver.F = -fx
+        self.solver.G = -fy
         return self.solver.u, self.solver.v, self.solver.p
 
     @property

@@ -50,10 +50,10 @@ def test_factory(L, H, N):
 if __name__ == '__main__':
     f = lambda x, y: (x - 0.5)
     g = lambda x, y: (y - 0.5)
-    p = lambda x, y: ((x - 0.5)**2 + (y - 0.5)**2)/2 - 1/3
+    p = lambda x, y: 0.5*((x - 0.5)**2 + (y - 0.5)**2) - 1/6
 
-    X = np.linspace(0, 1, 100)
-    Y = np.linspace(0, 1, 100)
+    X = np.linspace(0, 1, 1000)
+    Y = np.linspace(0, 1, 1000)
     xv, yv = np.meshgrid(X, Y)
     F = f(xv, yv)
     G = g(xv, yv)
@@ -65,4 +65,5 @@ if __name__ == '__main__':
     )
     cm = plt.contourf(s1.x, s1.y, s1.p)
     plt.colorbar()
-    plt.show()
+    #plt.show()
+    print(s1.error_p(2))

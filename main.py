@@ -38,18 +38,50 @@ if __name__ == '__main__':
     # Instantiate membrane and fluid
     membrane = Membrane(X, Y, k)
     fluid = Fluid(xv, yv)
+    # TODO: Maybe the simulation object should
+    #       register membranes to fluids
     fluid.register(membrane)
 
-    dt = 0.001
+    dt = 0.00001
     simulation = Simulation(fluid, membrane, dt)
 
-    t_end = 0.05
     t = 0.0
     import time
     s0 = time.time()
-    # while t < 10*dt:
-    #     print(f"{t=}")
-    #     simulation.step().plot_pressure()
-    #     t += dt
+    while t < 10*dt:
+        print(f"{t=}")
+        step = simulation.step()
+        step.plot_pressure()
+        t += dt
     s1 = time.time()
     print(f"{s1 - s0:,}s")
+
+    # Elliptical membrane test case
+    X = 0.5 + 0.4*np.cos(theta)
+    Y = 0.5 + 0.15*np.sin(theta)
+
+    fig, ax = plt.subplots()
+    ax.plot(X, Y, "o")
+    ax.grid()
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    fig.show()
+
+    membrane = Membrane(X, Y, k)
+    fluid = Fluid(xv, yv)
+    fluid.register(membrane)
+
+    dt = 0.00005
+    simulation = Simulation(fluid, membrane, dt)
+
+    t = 0.0
+    import time
+    s0 = time.time()
+    while t < 15000*dt:
+        print(f"{t=}")
+        step = simulation.step()
+        step.plot_pressure()
+        t += dt
+    s1 = time.time()
+    print(f"{s1 - s0:,}s")
+    # Shrinks to a point

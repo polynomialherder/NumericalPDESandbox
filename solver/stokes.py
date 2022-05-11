@@ -209,14 +209,31 @@ class StokesSolver:
     def H(self):
         return self.H_real
 
-    def error(self, v1, v2, p=2):
-        return norm(v1 - v2, p)
+    def error_2(self, v):
+        return np.sqrt(np.sqrt(sum(sum(v**2))*self.h*self.l))
 
-    def error_v(self, p=2):
-        return self.error(self.v_actual, self.v, p=p)
+    def error_1(self, v):
+        return sum(sum(abs(v)))*self.h*self.l
 
-    def error_u(self, p=2):
-        return self.error(self.u_actual, self.u, p=p)
+    def error_inf(self, v):
+        return abs(v).max().max()
+
+    def error(self, v, p=2):
+        if p == 1:
+            return self.error_1(v)
+        elif p == 2:
+            return self.error_2(v)
+        elif p == np.inf:
+            return self.error_inf(v)
+        raise NotImplementedError(f"Error with {p=} not implemented; p must be one of 1, 2, or inf")
+
 
     def error_p(self, p=2):
-        return self.error(self.p_actual, self.p, p=p)
+        return self.error(self.p - self.p_actual, p=p)
+
+    def error_u(self, p=2):
+        return self.error(self.u - self.u_actual, p=p)
+
+    def error_v(self, p=2):
+        return self.error(self.v - self.v_actual, p=p)
+
