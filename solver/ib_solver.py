@@ -5,45 +5,84 @@ from itertools import product
 import matplotlib.pyplot as plt
 import numpy as np
 
+import h5py
+
 from scipy.linalg import norm
 from solver.ib_utils import spread_to_fluid, interp_to_membrane
 from solver.stokes import StokesSolver
 
 
-@dataclass
 class SimulationStep:
 
-    xv: np.array
-    yv: np.array
-    fx: np.array
-    fy: np.array
-    X: np.array
-    Y: np.array
-    t: float
-    p: float
+   def __init__(self, *, xv=None, yv=None, fx=None, fy=None, X=None, Y=None, t=None, p=None, u=None, v=None):
+      self.xv = xv
+      self.yv = yv
+      self.fx = fx
+      self.fy = fy
+      self.X = X
+      self.Y = Y
+      self.t = t
+      self.p = p
+      self.u = u
+      self.v = v
 
-    def plot(self):
-        plt.plot(self.X, self.Y, 'o')
-        ax = plt.gca()
-        ax.set_title(f"t={self.t}")
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        ax.grid()
-        plt.draw()
-        plt.pause(0.1)
-        plt.clf()
+   def plot(self):
+         fig, ax = plt.subplots()
+         ax.plot(self.X, self.Y, 'o')
+         ax.set_title(f"t={self.t:.3f}")
+         ax.set_xlim(0, 1)
+         ax.set_ylim(0, 1)
+         fig.show()
+
+   def plot_pressure(self):
+       cm = plt.pcolor(self.xv, self.yv, self.p)
+       ax = plt.gca()
+       ax.set_title(f"t={self.t:.3f}")
+       ax.set_xlim(0, 1)
+       ax.set_ylim(0, 1)
+       plt.colorbar(cm)
+       plt.draw()
+       plt.pause(0.1)
+       plt.clf()
+
+   def plot_lag_force(self):
+       fig, ax = plt.subplots()
+       ax.quiver(self.X, self.Y, self.Fx, self.Fy)
+       ax.set_title(f"t={self.t:.3f}")
+       ax.set_xlim(0, 1)
+       ax.set_ylim(0, 1)
+       fig.show()
 
 
-    def plot_pressure(self):
-        cm = plt.pcolor(self.xv, self.yv, self.p)
-        ax = plt.gca()
-        ax.set_title(f"t={self.t}")
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        plt.colorbar(cm)
-        plt.draw()
-        plt.pause(0.1)
-        plt.clf()
+   def plot_eul_force(self):
+       fig, ax = plt.subplots()
+       ax.quiver(self.xv, self.yv, self.fx, self.fy)
+       ax.set_title(f"t={self.t:.3f}")
+       ax.set_xlim(0, 1)
+       ax.set_ylim(0, 1)
+       fig.show()
+
+
+
+   def plot_lag_vel(self):
+       fig, ax = plt.subplots()
+       ax.quiver(self.X, self.Y, self.U, self.V)
+       ax.set_title(f"t={self.t:.3f}")
+       ax.set_xlim(0, 1)
+       ax.set_ylim(0, 1)
+       fig.show()
+
+
+
+   def plot_eul_vel(self):
+       fig, ax = plt.subplots()
+       ax.quiver(self.xv, self.yv, self.u, self.v)
+       ax.set_title(f"t={self.t}")
+       ax.set_xlim(0, 1)
+       ax.set_ylim(0, 1)
+       fig.show()
+
+
 
 
 class Simulation:
@@ -54,6 +93,7 @@ class Simulation:
         self.dt = dt
         self.mu = mu
         self.t = t
+        self.cache = []
 
 
     def calculate_forces(self):
@@ -76,12 +116,21 @@ class Simulation:
         Fx, Fy = self.calculate_forces()
         fx, fy = self.spread_forces(Fx, Fy)
         u, v, p = self.stokes_solve(fx, fy)
-        U, V = self.calculate_velocities(fx, fy)
+        U, V = self.calculate_velocities(u, v)
         self.update_membrane_positions(U, V)
         self.t += self.dt
         return SimulationStep(
-            self.fluid.xv, self.fluid.yv, fx, fy, self.membrane.X, self.membrane.Y, self.t, p
+            xv=self.fluid.xv, yv=self.fluid.yv, fx=fx, fy=fy, X=self.membrane.X, Y=self.membrane.Y, t=self.t, p=p, u=u, v=v
         )
+
+
+    def save(self, filename="data.hdf5"):
+        with h5py.File(filename, "w") as f:
+            f.create_dataset("Membrane Positions: X", data=self.membrane.X)
+            f.create_dataset("Membrane Positions: Y", data=self.membrane.Y)
+            f.create_dataset("Fluid Pressure Field", data=self.fluid.solver.p)
+            f.create_dataset("t", data=self.t)
+
 
 
 class Fluid:
@@ -107,6 +156,9 @@ class Fluid:
 
     def spread(self, F):
         return spread_to_fluid(F, self, self.membrane)
+
+    def __repr__(self):
+        return f"<Fluid mu={self.mu}>"
 
 
 class Membrane:
