@@ -1,6 +1,11 @@
+import datetime
+import time
+
 from dataclasses import dataclass
-from math import floor
 from itertools import product
+import logging
+from math import floor
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,89 +16,66 @@ from scipy.linalg import norm
 from solver.ib_utils import spread_to_fluid, interp_to_membrane
 from solver.stokes import StokesSolver
 
-
-class SimulationStep:
-
-   def __init__(self, *, xv=None, yv=None, fx=None, fy=None, X=None, Y=None, t=None, p=None, u=None, v=None):
-      self.xv = xv
-      self.yv = yv
-      self.fx = fx
-      self.fy = fy
-      self.X = X
-      self.Y = Y
-      self.t = t
-      self.p = p
-      self.u = u
-      self.v = v
-
-   def plot(self):
-         fig, ax = plt.subplots()
-         ax.plot(self.X, self.Y, 'o')
-         ax.set_title(f"t={self.t:.3f}")
-         ax.set_xlim(0, 1)
-         ax.set_ylim(0, 1)
-         fig.show()
-
-   def plot_pressure(self):
-       cm = plt.pcolor(self.xv, self.yv, self.p)
-       ax = plt.gca()
-       ax.set_title(f"t={self.t:.3f}")
-       ax.set_xlim(0, 1)
-       ax.set_ylim(0, 1)
-       plt.colorbar(cm)
-       plt.draw()
-       plt.pause(0.1)
-       plt.clf()
-
-   def plot_lag_force(self):
-       fig, ax = plt.subplots()
-       ax.quiver(self.X, self.Y, self.Fx, self.Fy)
-       ax.set_title(f"t={self.t:.3f}")
-       ax.set_xlim(0, 1)
-       ax.set_ylim(0, 1)
-       fig.show()
-
-
-   def plot_eul_force(self):
-       fig, ax = plt.subplots()
-       ax.quiver(self.xv, self.yv, self.fx, self.fy)
-       ax.set_title(f"t={self.t:.3f}")
-       ax.set_xlim(0, 1)
-       ax.set_ylim(0, 1)
-       fig.show()
-
-
-
-   def plot_lag_vel(self):
-       fig, ax = plt.subplots()
-       ax.quiver(self.X, self.Y, self.U, self.V)
-       ax.set_title(f"t={self.t:.3f}")
-       ax.set_xlim(0, 1)
-       ax.set_ylim(0, 1)
-       fig.show()
-
-
-
-   def plot_eul_vel(self):
-       fig, ax = plt.subplots()
-       ax.quiver(self.xv, self.yv, self.u, self.v)
-       ax.set_title(f"t={self.t}")
-       ax.set_xlim(0, 1)
-       ax.set_ylim(0, 1)
-       fig.show()
-
-
-
+from os.path import join
 
 class Simulation:
 
-    def __init__(self, fluid, membrane, dt, t=0, mu=1):
+    def __init__(self, fluid, membrane, dt, t=0, id=None, mu=1):
         self.fluid = fluid
         self.membrane = membrane
         self.dt = dt
         self.mu = mu
         self.t = t
+        self.iteration = 0
         self.cache = []
+        self.current_step = None
+        self.id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f") if id is None else id
+        self.current_step = None
+
+    @property
+    def logger(self):
+        return logging.getLogger(f"Simulation#{self.id}")
+
+
+    def perform_simulation(self, iterations=1000, write_frequency=100, plot_frequency=100, write_format="csv"):
+       simulation_start = time.time()
+       self.logger.info(f"Beginning simulation with {iterations=} {write_frequency=} {plot_frequency=} {write_format=}")
+       self.prepare_filesystem()
+       while self.t < iterations*self.dt:
+          step = self.step()
+          if not (self.iteration % write_frequency):
+             self.write_data(step, write_format)
+          if not (self.iteration % plot_frequency):
+             self.write_plots(step)
+          self.iteration += 1
+       simulation_end = time.time()
+       self.logger.info(f"Ending simulation. Simulation took {simulation_end - simulation_start}s")
+
+
+    def prepare_filesystem(self):
+        self.logger.debug(f"Setting up folder structure on the filesystem")
+        artifacts = Path(f"artifacts")
+        artifacts.mkdir(exist_ok=True)
+        simulation = artifacts / Path(self.id)
+        simulation.mkdir(exist_ok=True)
+
+
+    def write_data(self, step, write_format):
+        step.iteration_path.mkdir(exist_ok=True)
+        self.logger.info(f"Writing data files to disk for iteration#{step.iteration}")
+        if write_format == "csv":
+            step.write_csv(self.id)
+        elif write_format == "hdf5":
+            step.write_hdf5(self.id)
+        else:
+            raise Exception(f"Write format {write_format} not supported; must be one of ('csv', 'hdf5')")
+
+
+    def write_plots(self, step):
+        self.logger.info(f"Writing plots to disk for {step.iteration=}")
+        step.iteration_path.mkdir(exist_ok=True)
+        step.plots_path.mkdir(exist_ok=True)
+        step.generate_plots()
 
 
     def calculate_forces(self):
@@ -119,9 +101,13 @@ class Simulation:
         U, V = self.calculate_velocities(u, v)
         self.update_membrane_positions(U, V)
         self.t += self.dt
-        return SimulationStep(
-            xv=self.fluid.xv, yv=self.fluid.yv, fx=fx, fy=fy, X=self.membrane.X, Y=self.membrane.Y, t=self.t, p=p, u=u, v=v
+        step = SimulationStep(
+           xv=self.fluid.xv, yv=self.fluid.yv, fx=fx, fy=fy, X=self.membrane.X,
+           Y=self.membrane.Y, Fx=Fx, Fy=Fy, t=self.t, p=p, u=u, v=v, U=U, V=V,
+           iteration=self.iteration, simulation_id=self.id
         )
+        self.current_step = step
+        return step
 
 
     def save(self, filename="data.hdf5"):
@@ -131,6 +117,159 @@ class Simulation:
             f.create_dataset("Fluid Pressure Field", data=self.fluid.solver.p)
             f.create_dataset("t", data=self.t)
 
+
+class SimulationStep:
+
+   def __init__(self, *, xv=None, yv=None, fx=None, fy=None,
+                Fx=None, Fy=None, X=None, Y=None,
+                t=None, p=None, u=None, v=None, U=None, V=None,
+                simulation_id=None, iteration=None):
+      self.xv = xv
+      self.yv = yv
+      self.fx = fx
+      self.fy = fy
+      self.Fx = Fx
+      self.Fy = Fy
+      self.X = X
+      self.Y = Y
+      self.t = t
+      self.p = p
+      self.u = u
+      self.v = v
+      self.U = U
+      self.V = V
+      self.simulation_id = simulation_id
+      self.iteration = iteration
+
+
+   def plot_membrane_positions(self, to_file=None):
+      fig, ax = plt.subplots()
+      ax.plot(self.X, self.Y, 'o')
+      ax.set_title(f"t={self.t:.3f}")
+      ax.set_xlim(0, 1)
+      ax.set_ylim(0, 1)
+      if to_file:
+         fig.savefig(to_file)
+      else:
+         fig.show()
+      plt.close(fig)
+
+
+   def plot_pressure(self, to_file=None):
+       fig, ax = plt.subplots()
+       cm = ax.pcolor(self.xv, self.yv, self.p)
+       ax.set_title(f"t={self.t:.3f}")
+       ax.set_xlim(0, 1)
+       ax.set_ylim(0, 1)
+       fig.colorbar(cm)
+       if to_file:
+           fig.savefig(to_file)
+       else:
+           fig.show()
+       plt.close(fig)
+
+
+   def plot_lag_force(self, to_file=None):
+       fig, ax = plt.subplots()
+       ax.quiver(self.X, self.Y, self.Fx, self.Fy)
+       ax.set_title(f"t={self.t:.3f}")
+       ax.set_xlim(0, 1)
+       ax.set_ylim(0, 1)
+       if to_file:
+          fig.savefig(to_file)
+       else:
+          fig.show()
+       plt.close(fig)
+
+
+
+   def plot_eul_force(self, to_file=None):
+       fig, ax = plt.subplots()
+       ax.quiver(self.xv, self.yv, self.fx, self.fy)
+       ax.set_title(f"t={self.t:.3f}")
+       ax.set_xlim(0, 1)
+       ax.set_ylim(0, 1)
+       if to_file:
+           fig.savefig(to_file)
+       else:
+           fig.show()
+       plt.close(fig)
+
+
+
+   def plot_lag_vel(self, to_file=None):
+       fig, ax = plt.subplots()
+       ax.quiver(self.X, self.Y, self.U, self.V)
+       ax.set_title(f"t={self.t:.3f}")
+       ax.set_xlim(0, 1)
+       ax.set_ylim(0, 1)
+       if to_file:
+           fig.savefig(to_file)
+       else:
+           fig.show()
+       plt.close(fig)
+
+
+   def plot_eul_vel(self, to_file=None):
+       fig, ax = plt.subplots()
+       ax.quiver(self.xv, self.yv, self.u, self.v)
+       ax.set_title(f"t={self.t}")
+       ax.set_xlim(0, 1)
+       ax.set_ylim(0, 1)
+       if to_file:
+           fig.savefig(to_file)
+       else:
+           fig.show()
+       plt.close(fig)
+
+
+   def generate_plots(self):
+       self.plot_membrane_positions(self.plots_path / "membrane_positions.png")
+       self.plot_pressure(self.plots_path / "pressure.png")
+       self.plot_lag_force(self.plots_path / "lag_forces.png")
+       self.plot_eul_force(self.plots_path / "eul_forces.png")
+       self.plot_lag_vel(self.plots_path / "lag_vel.png")
+       self.plot_eul_vel(self.plots_path / "eul_vel.png")
+
+
+   @property
+   def artifacts_path(self):
+       return Path(f"artifacts/{self.simulation_id}/")
+
+   @property
+   def iteration_path(self):
+       return self.artifacts_path / Path(f"{self.iteration}")
+
+
+   @property
+   def plots_path(self):
+       return self.iteration_path / "plots"
+
+
+   def write_csv(self, simulation_id=None):
+       self.iteration_path.mkdir(exist_ok=True)
+       np.savetxt(self.iteration_path / "fx.csv", self.fx, delimiter=",")
+       np.savetxt(self.iteration_path / "fy.csv", self.fy, delimiter=",")
+       np.savetxt(self.iteration_path / "X.csv", self.X, delimiter=",")
+       np.savetxt(self.iteration_path / "Y.csv", self.Y, delimiter=",")
+       np.savetxt(self.iteration_path / "p.csv", self.p, delimiter=",")
+       np.savetxt(self.iteration_path / "u.csv", self.u, delimiter=",")
+       np.savetxt(self.iteration_path / "v.csv", self.v, delimiter=",")
+       np.savetxt(self.iteration_path / "t.csv", np.array([self.t]), delimiter=",")
+
+
+   def write_hdf5(self, simulation_id=None):
+       self.artifacts_path.mkdir(exist_ok=True)
+       with h5py.File(self.artifacts_path / "data.hdf5", "w") as f:
+          group = f.create_group(f"{self.iteration}")
+          group.create_dataset("fx", data=self.fx)
+          group.create_dataset("fy", data=self.fy)
+          group.create_dataset("X", data=self.X)
+          group.create_dataset("Y", data=self.Y)
+          group.create_dataset("p", data=self.p)
+          group.create_dataset("u", data=self.u)
+          group.create_dataset("v", data=self.v)
+          group.create_dataset("t", data=self.t)
 
 
 class Fluid:
