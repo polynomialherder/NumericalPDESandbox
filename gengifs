@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+RUNID=$1
+SOURCE_FORMAT=$2
+RUNDIR=artifacts/$RUNID
+echo "Creating animation of Eulerian forces for RUNID=$RUNID and writing to $RUNDIR/eul_forces.gif"
+convert artifacts/$RUNID/*/plots/eul_forces.$SOURCE_FORMAT $RUNDIR/eul_forces.gif
+echo "Creating animation of Eulerian velocities for RUNID=$RUNID and writing to $RUNDIR/eul_forces.gif"
+convert artifacts/$RUNID/*/plots/eul_vel.$SOURCE_FORMAT $RUNDIR/eul_vel.gif
+echo "Creating animation of Lagrangian forces for RUNID=$RUNID and writing to $RUNDIR/lag_forces.gif"
+convert artifacts/$RUNID/*/plots/lag_forces.$SOURCE_FORMAT $RUNDIR/lag_forces.gif
+echo "Creating animation of Lagrangian velocities for RUNID=$RUNID and writing to $RUNDIR/lag_forces.gif"
+convert artifacts/$RUNID/*/plots/lag_vel.$SOURCE_FORMAT $RUNDIR/lag_vel.gif
+echo "Creating animation of membrane positions for RUNID=$RUNID and writing to $RUNDIR/lag_forces.gif"
+convert artifacts/$RUNID/*/plots/membrane_positions.$SOURCE_FORMAT $RUNDIR/membrane_positions.gif
+echo "Creating animation of pressures for RUNID=$RUNID and writing to $RUNDIR/lag_forces.gif"
+convert artifacts/$RUNID/*/plots/pressure.$SOURCE_FORMAT $RUNDIR/pressure.gif
+echo "Done"
+

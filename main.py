@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from itertools import product
 import logging
+import warnings
+
 from math import floor
 
 import matplotlib.pyplot as plt
@@ -10,11 +12,12 @@ from scipy.linalg import norm
 from solver.stokes import StokesSolver
 from solver.ib_solver import Membrane, Fluid, Simulation
 
+warnings.filterwarnings("ignore", module="matplotlib")
+
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger('matplotlib.font_manager').disabled = True
 logging.getLogger('matplotlib.colorbar').disabled = True
 logging.getLogger('asyncio').disabled = True
-
 
 
 if __name__ == '__main__':
@@ -22,7 +25,8 @@ if __name__ == '__main__':
     theta = np.linspace(0, 2*np.pi, 560)
     theta = theta[0:-1]
 
-    k = 0.01
+    # Define the Hooke's constant
+    k = 1.5
 
     # Define fluid grid
     L = 1
@@ -36,13 +40,14 @@ if __name__ == '__main__':
     xv, yv = np.meshgrid(Xp, Yp)
 
     # Circular membrane test case
-    X = 0.5 + (1/3)*np.cos(theta)
-    Y = 0.5 + (1/3)*np.sin(theta)
+    X = 0.5 + (1/8)*np.cos(theta)
+    Y = 0.5 + (1/2)*np.sin(theta)
 
     membrane = Membrane(X, Y, k)
     fluid = Fluid(xv, yv)
     fluid.register(membrane)
 
+    # dt=0.18, mu=0.3, k=1.5
     dt = 0.01
-    simulation = Simulation(fluid, membrane, dt)
-    simulation.perform_simulation(write_format="csv")
+    simulation = Simulation(fluid, membrane, dt, mu=0.3)
+    simulation.perform_simulation(iterations=400, data_format="csv", image_format="png")

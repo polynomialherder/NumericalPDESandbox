@@ -1,4 +1,5 @@
 import datetime
+import json
 import time
 
 from dataclasses import dataclass
@@ -21,6 +22,10 @@ from os.path import join
 class Simulation:
 
     def __init__(self, fluid, membrane, dt, t=0, id=None, mu=1):
+        """ Write a toplevel parameters file for the run
+            sizes of arrays
+            mu
+        """
         self.fluid = fluid
         self.membrane = membrane
         self.dt = dt
@@ -37,17 +42,39 @@ class Simulation:
         return logging.getLogger(f"Simulation#{self.id}")
 
 
-    def perform_simulation(self, iterations=1000, write_frequency=100, plot_frequency=100, write_format="csv"):
+    def initial_step(self):
+        fluid_shape = self.fluid.xv.shape
+        fluid_zeros = np.zeros(fluid_shape)
+        membrane_zeros = np.zeros(self.membrane.X.shape)
+        return SimulationStep(xv=self.fluid.xv, yv=self.fluid.yv, fx=fluid_zeros, fy=fluid_zeros,
+                    Fx=membrane_zeros, Fy=membrane_zeros, X=self.membrane.X, Y=self.membrane.Y,
+                    t=self.t, p=fluid_zeros, u=fluid_zeros, v=fluid_zeros, U=membrane_zeros, V=membrane_zeros,
+                    simulation_id=self.id, iteration=self.iteration)
+
+
+    def initial_write(self, data_format="csv", image_format="png"):
+        step = self.initial_step()
+        self.write_data(step, data_format)
+        self.write_plots(step, image_format)
+        self.iteration += 1
+
+    def perform_simulation(self, iterations=1000, write_frequency=100, plot_frequency=100, data_format="csv", image_format="png"):
        simulation_start = time.time()
-       self.logger.info(f"Beginning simulation with {iterations=} {write_frequency=} {plot_frequency=} {write_format=}")
+       self.logger.info(f"Beginning simulation with fluid and membrane parameters: {self.parameters}")
+       self.logger.info(f"Simulation parameters: {iterations=} {write_frequency=} {plot_frequency=} {data_format=}")
        self.prepare_filesystem()
+       self.write_parameters()
+       self.initial_write(data_format=data_format, image_format=image_format)
        while self.t < iterations*self.dt:
           step = self.step()
           if not (self.iteration % write_frequency):
-             self.write_data(step, write_format)
+             self.write_data(step, data_format)
           if not (self.iteration % plot_frequency):
-             self.write_plots(step)
+             self.write_plots(step, image_format)
           self.iteration += 1
+       if self.iteration > 1:
+           self.write_data(step, data_format)
+           self.write_plots(step, image_format)
        simulation_end = time.time()
        self.logger.info(f"Ending simulation. Simulation took {simulation_end - simulation_start}s")
 
@@ -60,22 +87,43 @@ class Simulation:
         simulation.mkdir(exist_ok=True)
 
 
-    def write_data(self, step, write_format):
+    def write_data(self, step, data_format):
         step.iteration_path.mkdir(exist_ok=True)
         self.logger.info(f"Writing data files to disk for iteration#{step.iteration}")
-        if write_format == "csv":
+        if data_format == "csv":
             step.write_csv(self.id)
-        elif write_format == "hdf5":
+        elif data_format == "hdf5":
             step.write_hdf5(self.id)
         else:
-            raise Exception(f"Write format {write_format} not supported; must be one of ('csv', 'hdf5')")
+            raise Exception(f"Data format {data_format} not supported; must be one of ('csv', 'hdf5')")
 
 
-    def write_plots(self, step):
+    @property
+    def parameters(self):
+        return {
+            "run_id": self.id,
+            "dt": self.dt,
+            "fluid": {
+                "mu": self.fluid.mu,
+                "shape": list(self.fluid.xv.shape)
+            },
+            "membrane": {
+                "k": self.membrane.k,
+                "shape": list(self.fluid.membrane.X.shape)
+            }
+        }
+
+
+    def write_parameters(self):
+        with open(f"artifacts/{self.id}/parameters.json", "w") as f:
+            json.dump(self.parameters, f)
+
+
+    def write_plots(self, step, image_format="png"):
         self.logger.info(f"Writing plots to disk for {step.iteration=}")
         step.iteration_path.mkdir(exist_ok=True)
         step.plots_path.mkdir(exist_ok=True)
-        step.generate_plots()
+        step.generate_plots(image_format=image_format)
 
 
     def calculate_forces(self):
@@ -223,13 +271,13 @@ class SimulationStep:
        plt.close(fig)
 
 
-   def generate_plots(self):
-       self.plot_membrane_positions(self.plots_path / "membrane_positions.png")
-       self.plot_pressure(self.plots_path / "pressure.png")
-       self.plot_lag_force(self.plots_path / "lag_forces.png")
-       self.plot_eul_force(self.plots_path / "eul_forces.png")
-       self.plot_lag_vel(self.plots_path / "lag_vel.png")
-       self.plot_eul_vel(self.plots_path / "eul_vel.png")
+   def generate_plots(self, image_format="png"):
+       self.plot_membrane_positions(self.plots_path / f"membrane_positions.{image_format}")
+       self.plot_pressure(self.plots_path / f"pressure.{image_format}")
+       self.plot_lag_force(self.plots_path / f"lag_forces.{image_format}")
+       self.plot_eul_force(self.plots_path / f"eul_forces.{image_format}")
+       self.plot_lag_vel(self.plots_path / f"lag_vel.{image_format}")
+       self.plot_eul_vel(self.plots_path / f"eul_vel.{image_format}")
 
 
    @property
@@ -277,6 +325,7 @@ class Fluid:
     def __init__(self, xv, yv, mu=1, membrane=None):
         self.xv = xv
         self.yv = yv
+        self.mu = mu
         self.membrane = membrane
         self.solver = StokesSolver(self.xv, self.yv, mu=mu)
 
