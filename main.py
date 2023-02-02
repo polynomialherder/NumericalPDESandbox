@@ -41,7 +41,10 @@ if __name__ == '__main__':
 
     # Circular membrane test case
     X = 0.5 + (1/8)*np.cos(theta)
-    Y = 0.5 + (1/2)*np.sin(theta)
+    Y = 0.5 + (1/4)*np.sin(theta)
+
+    X_ref = 0.5 + (1/32)*np.cos(theta)
+    Y_ref = 0.5 + (1/32)*np.sin(theta)
 
     membrane = Membrane(X, Y, k)
     fluid = Fluid(xv, yv)
@@ -49,5 +52,9 @@ if __name__ == '__main__':
 
     # dt=0.18, mu=0.3, k=1.5
     dt = 0.01
-    simulation = Simulation(fluid, membrane, dt, mu=0.3)
-    simulation.perform_simulation(iterations=400, data_format="csv", image_format="png")
+    simulation = Simulation(fluid, membrane, dt, mu=0.3, save_history=True)
+    simulation.perform_simulation(iterations=100, data_format="csv", image_format="png")
+    fig, ax = plt.subplots(nrows=1, ncols=2)
+    ax[0].plot(simulation.membrane.X, simulation.history[-1].Fx)
+    ax[1].plot(simulation.membrane.Y, simulation.history[-1].Fy)
+    fig.show()

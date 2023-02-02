@@ -3,9 +3,11 @@ import json
 import time
 
 from dataclasses import dataclass
+from functools import cached_property
 from itertools import product
 import logging
 from math import floor
+from os.path import join
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -16,12 +18,12 @@ import h5py
 from scipy.linalg import norm
 from solver.ib_utils import spread_to_fluid, interp_to_membrane
 from solver.stokes import StokesSolver
+from wand.image import Image
 
-from os.path import join
 
 class Simulation:
 
-    def __init__(self, fluid, membrane, dt, t=0, id=None, mu=1):
+    def __init__(self, fluid, membrane, dt, t=0, id=None, mu=1, save_history=False):
         """ Write a toplevel parameters file for the run
             sizes of arrays
             mu
@@ -31,11 +33,13 @@ class Simulation:
         self.dt = dt
         self.mu = mu
         self.t = t
-        self.iteration = 0
+        self.iteration = 1
         self.cache = []
         self.current_step = None
         self.id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f") if id is None else id
         self.current_step = None
+        self.save_history = save_history
+        self.history = []
 
     @property
     def logger(self):
@@ -65,7 +69,7 @@ class Simulation:
        self.prepare_filesystem()
        self.write_parameters()
        self.initial_write(data_format=data_format, image_format=image_format)
-       while self.t < iterations*self.dt:
+       while self.iteration <= iterations:
           step = self.step()
           if not (self.iteration % write_frequency):
              self.write_data(step, data_format)
@@ -154,6 +158,8 @@ class Simulation:
            Y=self.membrane.Y, Fx=Fx, Fy=Fy, t=self.t, p=p, u=u, v=v, U=U, V=V,
            iteration=self.iteration, simulation_id=self.id
         )
+        if self.save_history:
+            self.history.append(step)
         self.current_step = step
         return step
 
@@ -284,6 +290,7 @@ class SimulationStep:
    def artifacts_path(self):
        return Path(f"artifacts/{self.simulation_id}/")
 
+
    @property
    def iteration_path(self):
        return self.artifacts_path / Path(f"{self.iteration}")
@@ -298,6 +305,8 @@ class SimulationStep:
        self.iteration_path.mkdir(exist_ok=True)
        np.savetxt(self.iteration_path / "fx.csv", self.fx, delimiter=",")
        np.savetxt(self.iteration_path / "fy.csv", self.fy, delimiter=",")
+       np.savetxt(self.iteration_path / "Fx.csv", self.Fx, delimiter=",")
+       np.savetxt(self.iteration_path / "Fy.csv", self.Fy, delimiter=",")
        np.savetxt(self.iteration_path / "X.csv", self.X, delimiter=",")
        np.savetxt(self.iteration_path / "Y.csv", self.Y, delimiter=",")
        np.savetxt(self.iteration_path / "p.csv", self.p, delimiter=",")
@@ -351,17 +360,49 @@ class Fluid:
 
 class Membrane:
 
-    def __init__(self, X, Y, k, fluid=None, p=2):
+    def __init__(self, X, Y, k, X_ref=None, Y_ref=None, reference_kind="circle", fluid=None, p=2):
+        if reference_kind != "circle":
+            raise Exception(f"Non-circular reference configurations aren't supported; got {reference_kind=}")
         self.X = X
         self.Y = Y
+        self.X_ref = X if X_ref is None else X_ref
+        self.Y_ref = Y if Y_ref is None else Y_ref
+        self.reference_kind = reference_kind
         self.k = k
         self.p = p
         self.fluid = fluid
+        self.consistency_check()
+
+
+    @staticmethod
+    def ellipse_area(X, Y):
+        a = (X.max() - X.min())/2
+        b = (Y.max() - Y.min())/2
+        return np.pi*a*b
+
+
+    def areas_match(self):
+        membrane_area = self.ellipse_area(self.X, self.Y)
+        reference_area = self.ellipse_area(self.X_ref, self.Y_ref)
+        return membrane_area, reference_area, np.isclose(membrane_area, reference_area, atol=1e-5)
+
+
+    def circle_consistency_check(self):
+        membrane_area, reference_area, match = self.areas_match()
+        if not match:
+            print(f"Warning: membrane and reference areas don't match: {membrane_area=}, but {reference_area=}")
+        else:
+            print(f"Membrane and reference areas match")
+
+
+    def consistency_check(self):
+        if self.reference_kind == "circle":
+            self.circle_consistency_check()
+
 
 
     def interp(self, f):
         return interp_to_membrane(f, self.fluid, self)
-
 
     def difference_minus(self, vec):
         shifted = np.roll(vec, 1)
@@ -373,12 +414,11 @@ class Membrane:
 
     @property
     def difference_minus_x(self):
-        return self.difference_minus(self.X)
+        return self.difference_minus(self.X_ref)
 
     @property
     def difference_plus_x(self):
-        return self.difference_plus(self.X)
-
+        return self.difference_plus(self.X_ref)
 
     @property
     def norm_minus_x(self):
@@ -398,11 +438,11 @@ class Membrane:
 
     @property
     def difference_minus_y(self):
-        return self.difference_minus(self.Y)
+        return self.difference_minus(self.Y_ref)
 
     @property
     def difference_plus_y(self):
-        return self.difference_plus(self.Y)
+        return self.difference_plus(self.Y_ref)
 
     @property
     def tau_minus_y(self):
