@@ -14,11 +14,10 @@ def spread_to_fluid(F, fluid, membrane):
     yv = fluid.yv
     X = membrane.X
     Y = membrane.Y
-    dS = membrane.dS
+    dS = membrane.delta_theta
     return spread(F, xv, yv, X, Y, dS)
 
 
-@njit
 def spread(F, xv, yv, X, Y, dS):
     dx = 1 / xv[0].size
     dy = 1 / len(yv)
@@ -56,10 +55,9 @@ def spread(F, xv, yv, X, Y, dS):
 
 
 def interp_to_membrane(f, fluid, membrane):
-    return interp(f, fluid.xv, fluid.yv, membrane.X, membrane.Y, membrane.dS)
+    return interp(f, fluid.xv, fluid.yv, membrane.X, membrane.Y, membrane.delta_theta)
 
 
-@njit
 def interp(f, xv, yv, X, Y, dS):
     dx = 1 / xv[0].size
     dy = 1 / len(yv)

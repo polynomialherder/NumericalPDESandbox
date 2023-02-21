@@ -131,7 +131,8 @@ class Simulation:
 
 
     def calculate_forces(self):
-        return self.membrane.Fx, self.membrane.Fy
+        F = self.membrane.F
+        return F.real, F.imag
 
     def spread_forces(self, Fx, Fy):
         return self.fluid.spread(Fx), self.fluid.spread(Fy)
@@ -143,8 +144,8 @@ class Simulation:
         return self.membrane.interp(u), self.membrane.interp(v)
 
     def update_membrane_positions(self, U, V):
-        self.membrane.X += self.dt*U
-        self.membrane.Y += self.dt*V
+        self.membrane.Z.real += self.dt*U
+        self.membrane.Z.imag += self.dt*V
 
     def step(self):
         Fx, Fy = self.calculate_forces()
@@ -363,15 +364,25 @@ class Membrane:
     def __init__(self, X, Y, k, X_ref=None, Y_ref=None, reference_kind="circle", fluid=None, p=2):
         if reference_kind != "circle":
             raise Exception(f"Non-circular reference configurations aren't supported; got {reference_kind=}")
-        self.X = X
-        self.Y = Y
+        self.Z = X + Y*1j
         self.X_ref = X if X_ref is None else X_ref
         self.Y_ref = Y if Y_ref is None else Y_ref
+        self.Z_ref = self.X_ref + self.Y_ref*1j
         self.reference_kind = reference_kind
         self.k = k
         self.p = p
         self.fluid = fluid
         self.consistency_check()
+
+
+    @property
+    def X(self):
+        return self.Z.real
+
+
+    @property
+    def Y(self):
+        return self.Z.imag
 
 
     @staticmethod
@@ -381,14 +392,14 @@ class Membrane:
         return np.pi*a*b
 
 
-    def areas_match(self):
+    def areas(self):
         membrane_area = self.ellipse_area(self.X, self.Y)
         reference_area = self.ellipse_area(self.X_ref, self.Y_ref)
         return membrane_area, reference_area, np.isclose(membrane_area, reference_area, atol=1e-5)
 
 
     def circle_consistency_check(self):
-        membrane_area, reference_area, match = self.areas_match()
+        membrane_area, reference_area, match = self.areas()
         if not match:
             print(f"Warning: membrane and reference areas don't match: {membrane_area=}, but {reference_area=}")
         else:
@@ -400,82 +411,66 @@ class Membrane:
             self.circle_consistency_check()
 
 
-
     def interp(self, f):
         return interp_to_membrane(f, self.fluid, self)
+
 
     def difference_minus(self, vec):
         shifted = np.roll(vec, 1)
         return vec - shifted
 
+
     def difference_plus(self, vec):
         shifted = np.roll(vec, -1)
         return shifted - vec
 
-    @property
-    def difference_minus_x(self):
-        return self.difference_minus(self.X_ref)
 
     @property
-    def difference_plus_x(self):
-        return self.difference_plus(self.X_ref)
+    def delta_theta_plus(self):
+        diff = self.difference_plus(self.Z_ref)
+        return np.sqrt(diff.real**2 + diff.imag**2)
+
 
     @property
-    def norm_minus_x(self):
-        return norm(self.difference_minus_x, self.p)
+    def delta_theta_minus(self):
+        return norm(self.difference_minus(self.Z_ref), 2)
+
+
+    @cached_property
+    def delta_theta(self):
+        return 0.5*(self.delta_theta_plus + self.delta_theta_minus)
+
 
     @property
-    def norm_plus_x(self):
-        return norm(self.difference_minus_x, self.p)
+    def delta_plus_Z(self):
+        return self.difference_plus(self.Z)/self.delta_theta_plus
+
 
     @property
-    def tau_minus_x(self):
-        return self.difference_minus_x / self.dS_minus
+    def delta_minus_Z(self):
+        return self.difference_minus(self.Z)/self.delta_theta_minus
+
 
     @property
-    def tau_plus_x(self):
-        return self.difference_plus_x / self.dS_plus
+    def tau_plus(self):
+        return self.delta_plus_Z/norm(self.delta_plus_Z, 2)
+
 
     @property
-    def difference_minus_y(self):
-        return self.difference_minus(self.Y_ref)
+    def tau_minus(self):
+        return self.delta_minus_Z/norm(self.delta_minus_Z, 2)
+
 
     @property
-    def difference_plus_y(self):
-        return self.difference_plus(self.Y_ref)
+    def tension_plus(self):
+        return self.k*norm(self.delta_plus_Z)
+
 
     @property
-    def tau_minus_y(self):
-        return self.difference_minus_y / self.dS_minus
+    def tension_minus(self):
+        return self.k*norm(self.delta_minus_Z)
+
 
     @property
-    def tau_plus_y(self):
-        return self.difference_plus_y / self.dS_plus
-
-    @property
-    def tau_x(self):
-        return self.tau_minus_x + self.tau_plus_x
-
-    @property
-    def tau_y(self):
-        return self.tau_minus_y + self.tau_plus_y
-
-    @property
-    def dS_minus(self):
-        return np.sqrt(self.difference_minus_x**2 + self.difference_minus_y**2)
-
-    @property
-    def dS_plus(self):
-        return np.sqrt(self.difference_plus_x**2 + self.difference_plus_y**2)
-
-    @property
-    def dS(self):
-        return (self.dS_minus + self.dS_plus)/2
-
-    @property
-    def Fx(self):
-        return self.k*(self.tau_plus_x - self.tau_minus_x)/self.dS
-
-    @property
-    def Fy(self):
-        return self.k*(self.tau_plus_y - self.tau_minus_y)/self.dS
+    def F(self):
+        return self.k*(self.tension_plus*self.tau_plus - self.tension_minus*self.tau_minus)/self.delta_theta
