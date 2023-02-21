@@ -459,13 +459,13 @@ class Membrane:
         return shifted - vec
 
 
-    @property
+    @cached_property
     def delta_theta_plus(self):
         diff = self.difference_plus(self.Z_ref)
         return np.sqrt(diff.real**2 + diff.imag**2)
 
 
-    @property
+    @cached_property
     def delta_theta_minus(self):
         diff = self.difference_minus(self.Z_ref)
         return np.sqrt(diff.real**2 + diff.imag**2)
