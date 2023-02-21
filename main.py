@@ -26,7 +26,7 @@ if __name__ == '__main__':
     theta = theta[0:-1]
 
     # Define the Hooke's constant
-    k = 1.5
+    k = 0.5
 
     # Define fluid grid
     L = 1
@@ -46,14 +46,14 @@ if __name__ == '__main__':
     X_ref = 0.5 + (1/32)*np.cos(theta)
     Y_ref = 0.5 + (1/32)*np.sin(theta)
 
-    membrane = Membrane(X, Y, k)
+    membrane = Membrane(X, Y, X_ref=X_ref, Y_ref=Y_ref, k=k)
     fluid = Fluid(xv, yv)
     fluid.register(membrane)
 
     # dt=0.18, mu=0.3, k=1.5
-    dt = 0.01
+    dt = 0.00001
     simulation = Simulation(fluid, membrane, dt, mu=0.3, save_history=True)
-    simulation.perform_simulation(iterations=100, data_format="csv", image_format="png")
+    simulation.perform_simulation(iterations=5500, data_format="csv", image_format="png", write_frequency=5, plot_frequency=5)
     fig, ax = plt.subplots(nrows=1, ncols=2)
     ax[0].plot(simulation.membrane.X, simulation.history[-1].Fx)
     ax[1].plot(simulation.membrane.Y, simulation.history[-1].Fy)

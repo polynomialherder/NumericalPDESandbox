@@ -7,7 +7,7 @@ from functools import cached_property
 from itertools import product
 import logging
 from math import floor
-from os.path import join
+from os.path import join, isfile
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -40,10 +40,25 @@ class Simulation:
         self.current_step = None
         self.save_history = save_history
         self.history = []
+        self.gif = Image()
+
 
     @property
     def logger(self):
         return logging.getLogger(f"Simulation#{self.id}")
+
+
+    def append_gifimage(self, path):
+        if not isfile(path):
+            return
+        with Image(filename=path) as im:
+            self.gif.sequence.append(im)
+
+
+    def write_gif(self):
+        self.gif.type = 'optimize'
+        self.gif.save(filename=f"artifacts/{self.id}/MembranePositions.gif")
+        self.gif.close()
 
 
     def initial_step(self):
@@ -52,8 +67,9 @@ class Simulation:
         membrane_zeros = np.zeros(self.membrane.X.shape)
         return SimulationStep(xv=self.fluid.xv, yv=self.fluid.yv, fx=fluid_zeros, fy=fluid_zeros,
                     Fx=membrane_zeros, Fy=membrane_zeros, X=self.membrane.X, Y=self.membrane.Y,
-                    t=self.t, p=fluid_zeros, u=fluid_zeros, v=fluid_zeros, U=membrane_zeros, V=membrane_zeros,
-                    simulation_id=self.id, iteration=self.iteration)
+                    X_ref=self.membrane.X_ref, Y_ref=self.membrane.Y_ref, t=self.t, p=fluid_zeros,
+                    u=fluid_zeros, v=fluid_zeros, U=membrane_zeros, V=membrane_zeros,
+                    simulation_id=self.id, iteration=self.iteration, simulation=self)
 
 
     def initial_write(self, data_format="csv", image_format="png"):
@@ -79,6 +95,7 @@ class Simulation:
        if self.iteration > 1:
            self.write_data(step, data_format)
            self.write_plots(step, image_format)
+           self.write_gif()
        simulation_end = time.time()
        self.logger.info(f"Ending simulation. Simulation took {simulation_end - simulation_start}s")
 
@@ -113,7 +130,9 @@ class Simulation:
             },
             "membrane": {
                 "k": self.membrane.k,
-                "shape": list(self.fluid.membrane.X.shape)
+                "shape": list(self.fluid.membrane.X.shape),
+                "reference_type": self.fluid.membrane.reference_kind,
+                "reference_configuration": self.fluid.membrane.reference_configuration
             }
         }
 
@@ -156,8 +175,9 @@ class Simulation:
         self.t += self.dt
         step = SimulationStep(
            xv=self.fluid.xv, yv=self.fluid.yv, fx=fx, fy=fy, X=self.membrane.X,
-           Y=self.membrane.Y, Fx=Fx, Fy=Fy, t=self.t, p=p, u=u, v=v, U=U, V=V,
-           iteration=self.iteration, simulation_id=self.id
+           Y=self.membrane.Y, X_ref=self.membrane.X_ref, Y_ref=self.membrane.Y_ref,
+           Fx=Fx, Fy=Fy, t=self.t, p=p, u=u, v=v, U=U, V=V,
+           iteration=self.iteration, simulation_id=self.id, simulation=self
         )
         if self.save_history:
             self.history.append(step)
@@ -176,9 +196,9 @@ class Simulation:
 class SimulationStep:
 
    def __init__(self, *, xv=None, yv=None, fx=None, fy=None,
-                Fx=None, Fy=None, X=None, Y=None,
+                Fx=None, Fy=None, X=None, Y=None, X_ref=None,  Y_ref=None,
                 t=None, p=None, u=None, v=None, U=None, V=None,
-                simulation_id=None, iteration=None):
+                simulation_id=None, iteration=None, simulation=None):
       self.xv = xv
       self.yv = yv
       self.fx = fx
@@ -187,6 +207,8 @@ class SimulationStep:
       self.Fy = Fy
       self.X = X
       self.Y = Y
+      self.X_ref = X_ref
+      self.Y_ref = Y_ref
       self.t = t
       self.p = p
       self.u = u
@@ -195,12 +217,15 @@ class SimulationStep:
       self.V = V
       self.simulation_id = simulation_id
       self.iteration = iteration
+      self.simulation = simulation
 
 
    def plot_membrane_positions(self, to_file=None):
       fig, ax = plt.subplots()
-      ax.plot(self.X, self.Y, 'o')
+      ax.plot(self.X, self.Y, 'o', label="Membrane positions")
+      ax.plot(self.X_ref, self.Y_ref, "x", label="Reference configuration")
       ax.set_title(f"t={self.t:.3f}")
+      ax.legend()
       ax.set_xlim(0, 1)
       ax.set_ylim(0, 1)
       if to_file:
@@ -208,6 +233,7 @@ class SimulationStep:
       else:
          fig.show()
       plt.close(fig)
+      self.simulation.append_gifimage(to_file)
 
 
    def plot_pressure(self, to_file=None):
@@ -376,6 +402,14 @@ class Membrane:
 
 
     @property
+    def reference_configuration(self):
+        return {
+            "X": list(self.X_ref),
+            "Y": list(self.Y_ref)
+        }
+
+
+    @property
     def X(self):
         return self.Z.real
 
@@ -433,7 +467,8 @@ class Membrane:
 
     @property
     def delta_theta_minus(self):
-        return norm(self.difference_minus(self.Z_ref), 2)
+        diff = self.difference_minus(self.Z_ref)
+        return np.sqrt(diff.real**2 + diff.imag**2)
 
 
     @cached_property
@@ -453,12 +488,16 @@ class Membrane:
 
     @property
     def tau_plus(self):
-        return self.delta_plus_Z/norm(self.delta_plus_Z, 2)
+        delta_plus_Z = self.delta_plus_Z
+        norms = np.sqrt(delta_plus_Z.real**2 + delta_plus_Z.imag**2)
+        return delta_plus_Z/norms
 
 
     @property
     def tau_minus(self):
-        return self.delta_minus_Z/norm(self.delta_minus_Z, 2)
+        delta_minus_Z = self.delta_minus_Z
+        norms = np.sqrt(delta_minus_Z.real**2 + delta_minus_Z.imag**2)
+        return delta_minus_Z/norms
 
 
     @property
