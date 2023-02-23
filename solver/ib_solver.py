@@ -1,12 +1,10 @@
 import datetime
 import json
 import time
+import traceback
+import warnings
 
-from dataclasses import dataclass
-from functools import cached_property
-from itertools import product
 import logging
-from math import floor
 from os.path import join, isfile
 from pathlib import Path
 
@@ -15,32 +13,33 @@ import numpy as np
 
 import h5py
 
-from scipy.linalg import norm
-from solver.ib_utils import spread_to_fluid, interp_to_membrane
-from solver.stokes import StokesSolver
 from wand.image import Image
 
 
 class Simulation:
 
-    def __init__(self, fluid, membrane, dt, t=0, id=None, mu=1, save_history=False):
-        """ Write a toplevel parameters file for the run
-            sizes of arrays
-            mu
-        """
+    def __init__(self, fluid, membrane, dt, t=0, id=None, save_history=False, iterations=1000,
+                       write=True, write_frequency=100, plot_frequency=100, data_format="csv", image_format="png"):
         self.fluid = fluid
         self.membrane = membrane
         self.dt = dt
-        self.mu = mu
         self.t = t
-        self.iteration = 1
+        self.iteration = 0
         self.cache = []
         self.current_step = None
         self.id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f") if id is None else id
-        self.current_step = None
         self.save_history = save_history
         self.history = []
-        self.gif = Image()
+        self.warnings = []
+        self.gif = None
+        self.start_time = None
+        self.end_time = None
+        self.iterations = iterations
+        self.write = write
+        self.write_frequency = write_frequency
+        self.plot_frequency = plot_frequency
+        self.data_format = data_format
+        self.image_format = image_format
 
 
     @property
@@ -72,35 +71,50 @@ class Simulation:
                     simulation_id=self.id, iteration=self.iteration, simulation=self)
 
 
-    def initial_write(self, data_format="csv", image_format="png"):
-        step = self.initial_step()
-        self.write_data(step, data_format)
-        self.write_plots(step, image_format)
+    def initial_write(self):
+        self.current_step = self.initial_step()
+        self.write_data()
+        self.write_plots()
         self.iteration += 1
 
-    def perform_simulation(self, iterations=1000, write_frequency=100, plot_frequency=100, data_format="csv", image_format="png"):
-       simulation_start = time.time()
+
+    def perform_step(self):
+        with warnings.catch_warnings(record=True) as w:
+            self.current_step = self.step()
+            if not (self.iteration % self.write_frequency):
+                self.write_data()
+            if not (self.iteration % self.plot_frequency):
+                self.write_plots()
+            self.warnings.extend(w)
+            return self.current_step
+
+
+    def perform_simulation(self):
+        while self.iteration <= self.iterations:
+           self.perform_step()
+           self.iteration += 1
+        if self.iteration > 1:
+           self.write_data()
+           self.write_plots()
+
+
+    def setup(self):
+       self.start_time = time.time()
        self.logger.info(f"Beginning simulation with fluid and membrane parameters: {self.parameters}")
-       self.logger.info(f"Simulation parameters: {iterations=} {write_frequency=} {plot_frequency=} {data_format=}")
+       self.logger.info(f"Simulation parameters: {self.iterations=} {self.write_frequency=} {self.plot_frequency=} {self.data_format=}")
        self.prepare_filesystem()
        self.write_parameters()
-       self.initial_write(data_format=data_format, image_format=image_format)
-       while self.iteration <= iterations:
-          step = self.step()
-          if not (self.iteration % write_frequency):
-             self.write_data(step, data_format)
-          if not (self.iteration % plot_frequency):
-             self.write_plots(step, image_format)
-          self.iteration += 1
-       if self.iteration > 1:
-           self.write_data(step, data_format)
-           self.write_plots(step, image_format)
-           self.write_gif()
-       simulation_end = time.time()
-       self.logger.info(f"Ending simulation. Simulation took {simulation_end - simulation_start}s")
+       self.initial_write()
+
+
+    def finish(self):
+       self.end_time = time.time()
+       self.logger.info(f"Ending simulation. Simulation took {self.end_time - self.start_time}s")
 
 
     def prepare_filesystem(self):
+        if not self.write:
+            return
         self.logger.debug(f"Setting up folder structure on the filesystem")
         artifacts = Path(f"artifacts")
         artifacts.mkdir(exist_ok=True)
@@ -108,15 +122,19 @@ class Simulation:
         simulation.mkdir(exist_ok=True)
 
 
-    def write_data(self, step, data_format):
+    def write_data(self, step=None):
+        if not self.write:
+            return
+        if step is None:
+            step = self.current_step
         step.iteration_path.mkdir(exist_ok=True)
         self.logger.info(f"Writing data files to disk for iteration#{step.iteration}")
-        if data_format == "csv":
-            step.write_csv(self.id)
+        if self.data_format == "csv":
+            step.write_csv()
         elif data_format == "hdf5":
-            step.write_hdf5(self.id)
+            step.write_hdf5()
         else:
-            raise Exception(f"Data format {data_format} not supported; must be one of ('csv', 'hdf5')")
+            raise Exception(f"Data format {self.data_format} not supported; must be one of ('csv', 'hdf5')")
 
 
     @property
@@ -142,7 +160,11 @@ class Simulation:
             json.dump(self.parameters, f)
 
 
-    def write_plots(self, step, image_format="png"):
+    def write_plots(self, step=None, image_format="png"):
+        if not self.write:
+            return
+        if step is None:
+            step = self.current_step
         self.logger.info(f"Writing plots to disk for {step.iteration=}")
         step.iteration_path.mkdir(exist_ok=True)
         step.plots_path.mkdir(exist_ok=True)
@@ -165,6 +187,7 @@ class Simulation:
     def update_membrane_positions(self, U, V):
         self.membrane.Z.real += self.dt*U
         self.membrane.Z.imag += self.dt*V
+
 
     def step(self):
         Fx, Fy = self.calculate_forces()
@@ -191,6 +214,24 @@ class Simulation:
             f.create_dataset("Membrane Positions: Y", data=self.membrane.Y)
             f.create_dataset("Fluid Pressure Field", data=self.fluid.solver.p)
             f.create_dataset("t", data=self.t)
+
+
+    def __enter__(self):
+        if self.write:
+            self.gif = Image()
+            self.setup()
+        return self
+
+
+    def __exit__(self, exception_type, exception_value, tb):
+        if self.write:
+            self.write_gif()
+            self.gif.close()
+
+        if exception_type:
+            tb = '\n\r'.join(traceback.format_tb(tb))
+            self.logger.error(f"Simulation failed due to an unhandled exception: \n\n {tb}")
+            self.logger.error(f"Exiting")
 
 
 class SimulationStep:
@@ -328,7 +369,7 @@ class SimulationStep:
        return self.iteration_path / "plots"
 
 
-   def write_csv(self, simulation_id=None):
+   def write_csv(self):
        self.iteration_path.mkdir(exist_ok=True)
        np.savetxt(self.iteration_path / "fx.csv", self.fx, delimiter=",")
        np.savetxt(self.iteration_path / "fy.csv", self.fy, delimiter=",")
@@ -342,7 +383,7 @@ class SimulationStep:
        np.savetxt(self.iteration_path / "t.csv", np.array([self.t]), delimiter=",")
 
 
-   def write_hdf5(self, simulation_id=None):
+   def write_hdf5(self):
        self.artifacts_path.mkdir(exist_ok=True)
        with h5py.File(self.artifacts_path / "data.hdf5", "w") as f:
           group = f.create_group(f"{self.iteration}")
@@ -356,160 +397,5 @@ class SimulationStep:
           group.create_dataset("t", data=self.t)
 
 
-class Fluid:
-
-    def __init__(self, xv, yv, mu=1, membrane=None):
-        self.xv = xv
-        self.yv = yv
-        self.mu = mu
-        self.membrane = membrane
-        self.solver = StokesSolver(self.xv, self.yv, mu=mu)
-
-    def register(self, membrane):
-        self.membrane = membrane
-        self.membrane.fluid = self
-
-    def stokes_solve(self, fx, fy):
-        self.solver.F = -fx
-        self.solver.G = -fy
-        return self.solver.u, self.solver.v, self.solver.p
-
-    @property
-    def shape(self):
-        return self.xv.shape
-
-    def spread(self, F):
-        return spread_to_fluid(F, self, self.membrane)
-
-    def __repr__(self):
-        return f"<Fluid mu={self.mu}>"
 
 
-class Membrane:
-
-    def __init__(self, X, Y, k, X_ref=None, Y_ref=None, reference_kind="circle", fluid=None, p=2):
-        if reference_kind != "circle":
-            raise Exception(f"Non-circular reference configurations aren't supported; got {reference_kind=}")
-        self.Z = X + Y*1j
-        self.X_ref = X if X_ref is None else X_ref
-        self.Y_ref = Y if Y_ref is None else Y_ref
-        self.Z_ref = self.X_ref + self.Y_ref*1j
-        self.reference_kind = reference_kind
-        self.k = k
-        self.p = p
-        self.fluid = fluid
-        self.consistency_check()
-
-
-    @property
-    def reference_configuration(self):
-        return {
-            "X": list(self.X_ref),
-            "Y": list(self.Y_ref)
-        }
-
-
-    @property
-    def X(self):
-        return self.Z.real
-
-
-    @property
-    def Y(self):
-        return self.Z.imag
-
-
-    @staticmethod
-    def ellipse_area(X, Y):
-        a = (X.max() - X.min())/2
-        b = (Y.max() - Y.min())/2
-        return np.pi*a*b
-
-
-    def areas(self):
-        membrane_area = self.ellipse_area(self.X, self.Y)
-        reference_area = self.ellipse_area(self.X_ref, self.Y_ref)
-        return membrane_area, reference_area, np.isclose(membrane_area, reference_area, atol=1e-5)
-
-
-    def circle_consistency_check(self):
-        membrane_area, reference_area, match = self.areas()
-        if not match:
-            print(f"Warning: membrane and reference areas don't match: {membrane_area=}, but {reference_area=}")
-        else:
-            print(f"Membrane and reference areas match")
-
-
-    def consistency_check(self):
-        if self.reference_kind == "circle":
-            self.circle_consistency_check()
-
-
-    def interp(self, f):
-        return interp_to_membrane(f, self.fluid, self)
-
-
-    def difference_minus(self, vec):
-        shifted = np.roll(vec, 1)
-        return vec - shifted
-
-
-    def difference_plus(self, vec):
-        shifted = np.roll(vec, -1)
-        return shifted - vec
-
-
-    @cached_property
-    def delta_theta_plus(self):
-        diff = self.difference_plus(self.Z_ref)
-        return np.sqrt(diff.real**2 + diff.imag**2)
-
-
-    @cached_property
-    def delta_theta_minus(self):
-        diff = self.difference_minus(self.Z_ref)
-        return np.sqrt(diff.real**2 + diff.imag**2)
-
-
-    @cached_property
-    def delta_theta(self):
-        return 0.5*(self.delta_theta_plus + self.delta_theta_minus)
-
-
-    @property
-    def delta_plus_Z(self):
-        return self.difference_plus(self.Z)/self.delta_theta_plus
-
-
-    @property
-    def delta_minus_Z(self):
-        return self.difference_minus(self.Z)/self.delta_theta_minus
-
-
-    @property
-    def tau_plus(self):
-        delta_plus_Z = self.delta_plus_Z
-        norms = np.sqrt(delta_plus_Z.real**2 + delta_plus_Z.imag**2)
-        return delta_plus_Z/norms
-
-
-    @property
-    def tau_minus(self):
-        delta_minus_Z = self.delta_minus_Z
-        norms = np.sqrt(delta_minus_Z.real**2 + delta_minus_Z.imag**2)
-        return delta_minus_Z/norms
-
-
-    @property
-    def tension_plus(self):
-        return self.k*norm(self.delta_plus_Z)
-
-
-    @property
-    def tension_minus(self):
-        return self.k*norm(self.delta_minus_Z)
-
-
-    @property
-    def F(self):
-        return self.k*(self.tension_plus*self.tau_plus - self.tension_minus*self.tau_minus)/self.delta_theta

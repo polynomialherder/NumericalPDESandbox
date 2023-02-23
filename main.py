@@ -9,8 +9,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from scipy.linalg import norm
+from solver.fluid import Fluid
+from solver.membrane import Membrane
+from solver.ib_solver import Simulation
 from solver.stokes import StokesSolver
-from solver.ib_solver import Membrane, Fluid, Simulation
 
 warnings.filterwarnings("ignore", module="matplotlib")
 
@@ -48,14 +50,15 @@ if __name__ == '__main__':
     Y_ref = 0.5 + (1/np.sqrt(32))*np.sin(theta)
 
     membrane = Membrane(X, Y, X_ref=X_ref, Y_ref=Y_ref, k=k)
-    fluid = Fluid(xv, yv)
+    fluid = Fluid(xv, yv, mu=mu)
     fluid.register(membrane)
 
     # dt=0.18, mu=0.3, k=1.5
     dt = 0.0001
-    simulation = Simulation(fluid, membrane, dt, mu=mu, save_history=True)
-    simulation.perform_simulation(iterations=10000, data_format="csv", image_format="png", write_frequency=200, plot_frequency=200)
+    with Simulation(fluid, membrane, dt, save_history=True, iterations=10000,
+                    data_format="csv", image_format="png", write_frequency=1, plot_frequency=1) as s:
+        s.perform_simulation()
     fig, ax = plt.subplots(nrows=1, ncols=2)
-    ax[0].plot(simulation.membrane.X, simulation.history[-1].Fx)
-    ax[1].plot(simulation.membrane.Y, simulation.history[-1].Fy)
+    ax[0].plot(s.membrane.X, s.history[-1].Fx)
+    ax[1].plot(s.membrane.Y, s.history[-1].Fy)
     fig.show()
