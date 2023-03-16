@@ -10,6 +10,7 @@ class Fluid:
         self.mu = mu
         self.membrane = membrane
         self.solver = StokesSolver(self.xv, self.yv, mu=mu)
+        self.simulation = None
 
     def register(self, membrane):
         self.membrane = membrane

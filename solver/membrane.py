@@ -7,7 +7,10 @@ from solver.ib_utils import interp_to_membrane
 
 class Membrane:
 
-    def __init__(self, X, Y, k, X_ref=None, Y_ref=None, reference_kind="circle", fluid=None, p=2):
+    def __init__(self, X, Y, k, X_ref=None,
+                       Y_ref=None, reference_kind="circle", fluid=None, p=2,
+                       A=lambda x, t: 0
+                 ):
         if reference_kind != "circle":
             raise Exception(f"Non-circular reference configurations aren't supported; got {reference_kind=}")
         self.Z = X + Y*1j
@@ -19,6 +22,14 @@ class Membrane:
         self.p = p
         self.fluid = fluid
         self.consistency_check()
+        self.A_  = A
+
+
+    @property
+    def t(self):
+        if self.fluid.simulation:
+            return self.fluid.simulation.t
+        return 0
 
 
     @property
@@ -107,29 +118,46 @@ class Membrane:
 
 
     @property
+    def norms_delta_plus_Z(self):
+        return np.sqrt(self.delta_plus_Z.real**2 + self.delta_plus_Z.imag**2)
+
+
+    @property
+    def norms_delta_minus_Z(self):
+        return np.sqrt(self.delta_minus_Z.real**2 + self.delta_minus_Z.imag**2)
+
+
+    @property
     def tau_plus(self):
         delta_plus_Z = self.delta_plus_Z
-        norms = np.sqrt(delta_plus_Z.real**2 + delta_plus_Z.imag**2)
-        return delta_plus_Z/norms
+        return delta_plus_Z/self.norms_delta_plus_Z
 
 
     @property
     def tau_minus(self):
         delta_minus_Z = self.delta_minus_Z
-        norms = np.sqrt(delta_minus_Z.real**2 + delta_minus_Z.imag**2)
-        return delta_minus_Z/norms
+        return delta_minus_Z/self.norms_delta_minus_Z
+
+
+    @property
+    def Ap(self):
+        return self.A_(self.delta_minus_Z, self.t)
+
+    @property
+    def Am(self):
+        return self.A_(self.delta_minus_Z, self.t)
 
 
     @property
     def tension_plus(self):
-        return self.k*norm(self.delta_plus_Z)
+        return self.k*(norm(self.delta_plus_Z) - 1) + self.Ap
 
 
     @property
     def tension_minus(self):
-        return self.k*norm(self.delta_minus_Z)
+        return self.k*(norm(self.delta_minus_Z) - 1) + self.Am
 
 
     @property
     def F(self):
-        return self.k*(self.tension_plus*self.tau_plus - self.tension_minus*self.tau_minus)/self.delta_theta
+        return (self.tension_plus*self.tau_plus - self.tension_minus*self.tau_minus)/self.delta_theta

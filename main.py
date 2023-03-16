@@ -55,7 +55,7 @@ if __name__ == '__main__':
 
     # dt=0.18, mu=0.3, k=1.5
     dt = 0.0001
-    with Simulation(fluid, membrane, dt, save_history=True, iterations=10000,
+    with Simulation(fluid, membrane, dt, save_history=True, iterations=100,
                     data_format="csv", image_format="png", write_frequency=1, plot_frequency=1) as s:
         s.perform_simulation()
     fig, ax = plt.subplots(nrows=1, ncols=2)
