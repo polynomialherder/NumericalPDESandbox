@@ -18,6 +18,7 @@ def spread_to_fluid(F, fluid, membrane):
     return spread(F, xv, yv, X, Y, dS)
 
 
+
 def spread(F, xv, yv, X, Y, dS):
     dx = 1 / xv[0].size
     dy = 1 / len(yv)
@@ -31,8 +32,8 @@ def spread(F, xv, yv, X, Y, dS):
         # If floored_x == xk_dx, then floored_x - 1 will only
         # capture 1 gridpoint to the left of xk rather than 2
         # Likewise for floored_y and yk_dy
-        correction_term_x = -1 if floored_x == xk_dx else 0
-        correction_term_y = -1 if floored_y == yk_dy else 0
+        correction_term_x = -1 if np.isclose(floored_x, xk_dx) else 0
+        correction_term_y = -1 if np.isclose(floored_y, yk_dy) else 0
         x_range = range(
             floored_x - 1 + correction_term_x, floored_x + 3 + correction_term_x
         )
@@ -48,8 +49,8 @@ def spread(F, xv, yv, X, Y, dS):
                 Yk = yv[jm, im]
                 rx = Xk - xk
                 ry = Yk - yk
-                delta_spread_x = (1 / dx) * (1 + np.cos(np.pi * rx / (2 * dx))) / 4
-                delta_spread_y = (1 / dy) * (1 + np.cos(np.pi * ry / (2 * dy))) / 4
+                delta_spread_x = delta_spread(rx, dx)
+                delta_spread_y = delta_spread(ry, dy)
                 f[jm, im] += Fk * delta_spread_x * delta_spread_y * ds
     return f
 

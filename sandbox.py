@@ -4,6 +4,9 @@ import distmesh as dm
 import matplotlib.pyplot as plt
 import numpy as np
 
+from solver.fluid import Fluid
+from solver.ib_utils import spread, interp
+
 """
 Structured vs unstructured
 Make the force 1
@@ -24,7 +27,7 @@ def meshplot(p, t, write_location=None):
         fig.savefig(write_location)
 
 
-def circle_mesh(r: float, q: np.ndarray, h=0.2):
+def circle_mesh(r: float, q: np.ndarray, h=0.1):
     def distance(x):
         return np.sqrt(((x - q)**2).sum(1)) - r
     bbox = (q[0] - r, q[1] - r, q[0] + r, q[1] + r)
@@ -63,6 +66,21 @@ class Mesh:
         self._edges = edges
 
 
+    @property
+    def X(self):
+        return np.array([p.x for p in self.points])
+
+
+    @property
+    def Y(self):
+        return np.array([p.y for p in self.points])
+
+
+    @property
+    def dA(self):
+        return np.array([p.area() for p in self.points])
+
+
     @cached_property
     def adjacencies(self):
         return adjacencies(self._edges)
@@ -80,7 +98,8 @@ class Mesh:
                     point_index, self
                 )
             )
-        return points
+        points = sorted(points, key=lambda z: z.index)
+        return np.array(points)
 
 
     def area(self):
@@ -98,6 +117,13 @@ class Point:
         self.mesh = parent_mesh
         self._coordinates = None
 
+    @property
+    def x(self):
+        return self.coordinates[0]
+
+    @property
+    def y(self):
+        return self.coordinates[1]
 
     @cached_property
     def coordinates(self):
@@ -134,12 +160,52 @@ class Point:
         return area
 
 
+    def __add__(self, other):
+        return self.coordinates + other
+
+
+    def __mul__(self, other):
+        return self.coordinates*other
+
+
+    def __truediv__(self, other):
+        return self.coordinates/other
+
+    def __exp__(self, other):
+        return self.coordinates**other
+
     def __repr__(self):
         return f"<Point at {self.coordinates}>"
 
 
-
 if __name__ == '__main__':
-    points, edges = circle_mesh(2.5, np.array([3, 4]))
+    print("Building mesh")
+    points, edges = circle_mesh(0.4, np.array([0.5, 0.5]), h=0.01)
+    print("Points and edges determined, building mesh object")
     mesh = Mesh(points, edges)
-    print(mesh.area())
+    X = np.linspace(0, 1, 20)
+    Y = np.linspace(0, 1, 20)
+    xv, yv = np.meshgrid(X, Y)
+    lagrange_force = np.ones(mesh.dA.shape)
+    spread_force = spread(
+        lagrange_force,
+        xv,
+        yv,
+        mesh.X,
+        mesh.Y,
+        mesh.dA
+    )
+    fig, ax = plt.subplots()
+    ax.contourf(xv, yv, spread_force)
+    fig.show()
+    euler_force = np.ones(xv.shape)
+    interp_force = interp(
+        euler_force,
+        xv,
+        yv,
+        mesh.X,
+        mesh.Y,
+        mesh.dA
+    )
+    fig, ax = plt.subplots()
+    ax.contourf(xv, yv, 
