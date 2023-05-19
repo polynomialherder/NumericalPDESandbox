@@ -4,6 +4,8 @@ import distmesh as dm
 import matplotlib.pyplot as plt
 import numpy as np
 
+from numpy.linalg import inv
+
 from solver.fluid import Fluid
 from solver.ib_utils import spread, interp
 
@@ -64,6 +66,9 @@ class Mesh:
     def __init__(self, coordinates, edges):
         self.coordinates = coordinates
         self._edges = edges
+        self._ref = None
+        self.faces_seen = set()
+        self.faces = []
 
 
     @property
@@ -109,6 +114,98 @@ class Mesh:
         return area
 
 
+    @staticmethod
+    def standardize(indices):
+        return tuple(sorted(list(indices)))
+
+
+    def register_face(self, indices):
+        indices = self.standardize(indices)
+        if indices not in self.faces_seen:
+            self.faces.append(
+                Face(indices, self)
+            )
+            self.faces_seen.add(indices)
+
+
+
+class Face:
+
+    def __init__(self, indices, mesh):
+        self.indices = indices
+        self.mesh = mesh
+        self._ref = None
+
+
+    def calculate_coordinates(self):
+        coordinates = []
+        for index in self.indices:
+            coordinates.append(
+                self.mesh.points[index].coordinates
+            )
+        # coordinates[:] returns a copy of coordinates
+        # simply assigning ref to coordinates would result
+        # in a pointer to the same object
+        self._ref = [np.array(c, copy=True) for c in coordinates]
+        return coordinates
+
+
+    @cached_property
+    def coordinates(self):
+        return self.calculate_coordinates()
+
+
+    @cached_property
+    def reference_coordinates(self):
+        if self._ref is None:
+            self.calculate_coordinates()
+        return self._ref
+
+
+    @cached_property
+    def area(self):
+        return calculate_area(*self.coordinates)
+
+
+    def __repr__(self):
+        return f"<Face with vertices {self.coordinates}>"
+
+
+    @cached_property
+    def s1(self):
+        return self.coordinates[1] - self.coordinates[0]
+
+
+    @cached_property
+    def s2(self):
+        return self.coordinates[2] - self.coordinates[0]
+
+
+    @property
+    def x1(self):
+        return self.reference_coordinates[1] - self.reference_coordinates[0]
+
+
+    @property
+    def x2(self):
+        return self.reference_coordinates[2] - self.reference_coordinates[0]
+
+
+    @cached_property
+    def s(self):
+        return np.column_stack([self.s1, self.s2])
+
+
+    @property
+    def x(self):
+        return np.column_stack([self.x1, self.x2])
+
+
+    @property
+    def A(self):
+        return self.x@inv(self.s)
+
+
 
 class Point:
 
@@ -143,8 +240,10 @@ class Point:
             common = adjacency_adjacencies.intersection(self.adjacencies)
             if common:
                 # There should be one node in common per adjacency
+                face = (self.index, adjacency, common.pop())
+                self.mesh.register_face(face)
                 faces.append(
-                    (self.index, adjacency, common.pop())
+                    face
                 )
         return faces
 
@@ -195,17 +294,12 @@ if __name__ == '__main__':
         mesh.Y,
         mesh.dA
     )
-    fig, ax = plt.subplots()
-    ax.contourf(xv, yv, spread_force)
-    fig.show()
-    euler_force = np.ones(xv.shape)
-    interp_force = interp(
-        euler_force,
-        xv,
-        yv,
-        mesh.X,
-        mesh.Y,
-        mesh.dA
-    )
-    fig, ax = plt.subplots()
-    ax.contourf(xv, yv, 
+    print(f"Checking that the face for each A is close to the identity matrix")
+    close_to_identity_matrix = np.all(np.isclose([f.A for f in mesh.faces], np.array([[1, 0], [0, 1]])))
+    print(f"If A is approximately the identity matrix, this should be True: {close_to_identity_matrix=}")
+    print(f"Now shifting all points in the mesh 2 units to the right")
+    for point in mesh.points:
+        point += 2
+    print(f"Checking that the face for each A is still close to the identity matrix")
+    close_to_identity_matrix = np.all(np.isclose([f.A for f in mesh.faces], np.array([[1, 0], [0, 1]])))
+    print(f"If A is still approximately the identity matrix, this should be True: {close_to_identity_matrix=}")
