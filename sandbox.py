@@ -183,6 +183,7 @@ class Face:
 
     @property
     def x1(self):
+        # Reverse 
         return self.reference_coordinates[1] - self.reference_coordinates[0]
 
 
@@ -205,6 +206,67 @@ class Face:
     def A(self):
         return self.x@inv(self.s)
 
+
+    @property
+    def delta(self):
+        return self.s[0, 0]*self.s[1, 1] - self.s[1,0]*self.s[0,1]
+
+
+    @property
+    def dAdx1_1(self):
+        return (1/self.delta)*np.array([
+            [self.s2[1], -self.s2[0]],
+            [0, 0]
+        ])
+
+    @property
+    def dAdx1_2(self):
+        return (1/self.delta)*np.array([
+            [0, 0],
+            [self.s2[1], -self.s2[0]]
+        ])
+
+
+    @property
+    def dAdx2_1(self):
+        return (1/self.delta)*np.array([
+            [-self.s1[1], self.s1[0]],
+            [0, 0]
+        ])
+
+    @property
+    def dAdx2_2(self):
+        return (1/self.delta)*np.array([
+            [0, 0],
+            [-self.s1[1], self.s1[0]]
+        ])
+
+    @property
+    def dAdx0_1(self):
+        return (1/self.delta)*np.array([
+            [self.s1[1] - self.s2[1], -self.s2[0] - self.s1[0]],
+            [0, 0]
+        ])
+
+
+    @property
+    def dAdx0_2(self):
+        return (1/self.delta)*np.array([
+            [0, 0],
+            [self.s1[1] - self.s2[1], -self.s2[0] - self.s1[0]]
+        ])
+
+
+    def dAdx1(self, i):
+        return [self.dAdx1_1, self.dAdx1_2][i]
+
+
+    def dAdx2(self, i):
+        return [self.dAdx2_1, self.dAdx2_2][i]
+
+
+    def dAdx0(self, i):
+        return [self.dAdx0_1, self.dAdx0_2][i]
 
 
 class Point:
