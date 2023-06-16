@@ -16,6 +16,9 @@ Spread it to the fluid grid
 Should get a little plateau (approximately 1 in the place where there is mesh, and drops off to 0 in the place where there is not mesh)
 """
 
+MU = 1
+K = 1
+
 def meshplot(p, t, write_location=None):
     fig, ax = plt.subplots()
     # PyDistMesh appears to access this deprecated property
@@ -128,6 +131,25 @@ class Mesh:
             self.faces_seen.add(indices)
 
 
+    def calculate_point_forces(self):
+        for face in self.faces:
+            face.calculate_point_forces()
+
+
+    @property
+    def forces(self):
+        return [np.array(p.force) for p in self.points]
+    
+
+    @property
+    def forcesX(self):
+        return [force[0] for force in self.forces]
+    
+    @property
+    def forcesY(self):
+        return [force[1] for force in self.forces]
+    
+
 
 class Face:
 
@@ -135,6 +157,7 @@ class Face:
         self.indices = indices
         self.mesh = mesh
         self._ref = None
+        self.points = [self.mesh.points[index] for index in self.indices]
 
 
     def calculate_coordinates(self):
@@ -172,23 +195,22 @@ class Face:
 
 
     @cached_property
-    def s1(self):
+    def x1(self):
         return self.coordinates[1] - self.coordinates[0]
 
 
     @cached_property
-    def s2(self):
+    def x2(self):
         return self.coordinates[2] - self.coordinates[0]
 
 
     @property
-    def x1(self):
-        # Reverse 
+    def s1(self):
         return self.reference_coordinates[1] - self.reference_coordinates[0]
 
 
     @property
-    def x2(self):
+    def s2(self):
         return self.reference_coordinates[2] - self.reference_coordinates[0]
 
 
@@ -210,6 +232,11 @@ class Face:
     @property
     def delta(self):
         return self.s[0, 0]*self.s[1, 1] - self.s[1,0]*self.s[0,1]
+    
+
+    @property
+    def J(self):
+        return self.delta
 
 
     @property
@@ -258,15 +285,42 @@ class Face:
 
 
     def dAdx1(self, i):
-        return [self.dAdx1_1, self.dAdx1_2][i]
+        return [self.dAdx1_1, self.dAdx1_2][i-1]
 
 
     def dAdx2(self, i):
-        return [self.dAdx2_1, self.dAdx2_2][i]
+        return [self.dAdx2_1, self.dAdx2_2][i-1]
 
 
     def dAdx0(self, i):
-        return [self.dAdx0_1, self.dAdx0_2][i]
+        return [self.dAdx0_1, self.dAdx0_2][i-1]
+    
+
+    def dAdx(self, k, ell):
+        return [
+            self.dAdx0(ell),
+            self.dAdx1(ell),
+            self.dAdx2(ell)
+        ][k]
+
+    
+
+    @property
+    def dWdA(self):
+        invAT = inv(self.A.T)
+        term_1 = MU*(self.A/self.J - np.trace(self.A*self.A.T)*invAT/(2*self.J))
+        term_2 = K*(self.J - 1)*invAT
+        return term_1 + term_2
+    
+
+    def calculate_point_forces(self):
+        dWdA = self.dWdA
+        for k in (0, 1, 2):
+            force = 0
+            for ell in (1, 2):
+                force += (dWdA*self.dAdx(k, ell)).sum()
+                force *= -self.area
+                self.points[k].force[ell-1] += force
 
 
 class Point:
@@ -275,6 +329,12 @@ class Point:
         self.index = point_index
         self.mesh = parent_mesh
         self._coordinates = None
+        self.force = [0, 0]
+
+
+    def add_force(self, ell, force_value):
+        self.force[ell - 1] += force_value
+        print(self.force, force_value)
 
     @property
     def x(self):
@@ -341,27 +401,23 @@ class Point:
 
 if __name__ == '__main__':
     print("Building mesh")
-    points, edges = circle_mesh(0.4, np.array([0.5, 0.5]), h=0.01)
+    points, edges = circle_mesh(0.4, np.array([0.5, 0.5]), h=0.1)
     print("Points and edges determined, building mesh object")
     mesh = Mesh(points, edges)
-    X = np.linspace(0, 1, 20)
-    Y = np.linspace(0, 1, 20)
-    xv, yv = np.meshgrid(X, Y)
-    lagrange_force = np.ones(mesh.dA.shape)
-    spread_force = spread(
-        lagrange_force,
-        xv,
-        yv,
-        mesh.X,
-        mesh.Y,
-        mesh.dA
-    )
-    print(f"Checking that the face for each A is close to the identity matrix")
-    close_to_identity_matrix = np.all(np.isclose([f.A for f in mesh.faces], np.array([[1, 0], [0, 1]])))
-    print(f"If A is approximately the identity matrix, this should be True: {close_to_identity_matrix=}")
-    print(f"Now shifting all points in the mesh 2 units to the right")
     for point in mesh.points:
-        point += 2
-    print(f"Checking that the face for each A is still close to the identity matrix")
-    close_to_identity_matrix = np.all(np.isclose([f.A for f in mesh.faces], np.array([[1, 0], [0, 1]])))
-    print(f"If A is still approximately the identity matrix, this should be True: {close_to_identity_matrix=}")
+        shift = np.array([0.5, 0.5])
+        point.coordinates -= shift
+        point.coordinates *= 1.1
+        point.coordinates += shift
+
+    mesh.dA
+    mesh.calculate_point_forces()
+
+    fig, ax = plt.subplots()
+    X = np.linspace(0, 1, 1000)
+    Y = np.linspace(0, 1, 1000)
+    xv, yv = np.meshgrid(X, Y)
+    coordinates = [p.coordinates for p in mesh.points]
+    ax.plot(coordinates)
+    ax.quiver(coordinates, mesh.forces)
+    fig.show()
