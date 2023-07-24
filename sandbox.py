@@ -149,7 +149,6 @@ class Mesh:
     def forcesY(self):
         return np.array([force[1] for force in self.forces])
 
-
     @property
     def reference_x(self):
         return np.array([face.reference_coordinates[0] for face in self.faces])
@@ -438,8 +437,6 @@ def compression_test(mesh):
     coordinates = [p.coordinates for p in mesh.points]
     foo = np.array(coordinates)
     ax.plot(foo[:,0],foo[:,1],'or')
-
-
     for point in mesh.points:
         shift = np.array([0.5, 0.5])
         mesh.coordinates[point.index] -= shift
@@ -455,6 +452,7 @@ def compression_test(mesh):
     coordinates = [p.coordinates for p in mesh.points]
     foo = np.array(coordinates)
     bar = np.array(mesh.forces)
+
     ax.plot(foo[:,0],foo[:,1],'ob')
     ax.quiver(foo[:,0],foo[:,1], bar[:,0],bar[:,1])
     fig.show()
@@ -530,4 +528,5 @@ def run_tests():
 
 
 if __name__ == '__main__':
-    pass
+    run_tests()
+
