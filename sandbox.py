@@ -530,37 +530,4 @@ def run_tests():
 
 
 if __name__ == '__main__':
-    print("Building mesh")
-    points, edges = circle_mesh(0.4, np.array([0.5, 0.5]), h=0.1)
-    print("Points and edges determined, building mesh object")
-    mesh = Mesh(points, edges)
-    mesh.initialize()
-
-    for point in mesh.points:
-        shift = np.array([0.5, 0.5])
-        mesh.coordinates[point.index] -= shift
-        mesh.coordinates[point.index][0] += mesh.coordinates[point.index][0] + 2*mesh.coordinates[point.index][1]
-        mesh.coordinates[point.index] += shift
-
-    mesh.calculate_point_forces()
-    X = np.linspace(0, 1, 55)
-    Y = np.linspace(0, 1, 55)
-    xv, yv = np.meshgrid(X, Y)
-    spread_force = spread(
-        np.sqrt((mesh.forces[:,0])**2 + (mesh.forces[:,1])**2),
-        xv,
-        yv,
-        mesh.X,
-        mesh.Y,
-        mesh.dA
-    )
-    fig, ax = plt.subplots()
-    X = np.linspace(0, 1, 55)
-    Y = np.linspace(0, 1, 55)
-    xv, yv = np.meshgrid(X, Y)
-    coordinates = [p.coordinates for p in mesh.points]
-    foo = np.array(coordinates)
-    bar = np.array(mesh.forces)
-    ax.plot(foo[:,0],foo[:,1],'ob')
-    ax.quiver(X,Y, spread_force[:,0],spread_force[:,1])
-    fig.show()
+    pass
