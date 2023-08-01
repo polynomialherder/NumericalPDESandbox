@@ -134,6 +134,9 @@ class Mesh:
     def calculate_point_forces(self):
         for face in self.faces:
             face.calculate_point_forces()
+        for i,point in enumerate(self.points):
+            self.points[i].force[0] *= 1/self.points[i].area()
+            self.points[i].force[1] *= 1/self.points[i].area()
 
 
     @property
@@ -336,7 +339,7 @@ class Face:
             for ell in (1, 2):
                 component_force = 0
                 component_force += (dWdA*self.dAdx(k, ell)).sum()
-                component_force *= -1/self.area() #self.points[k].area()
+                component_force *= -1*self.area() #self.points[k].area()
                 self.points[k].force[ell-1] += component_force
                 
 
@@ -440,7 +443,7 @@ def compression_test(mesh):
     for point in mesh.points:
         shift = np.array([0.5, 0.5])
         mesh.coordinates[point.index] -= shift
-        mesh.coordinates[point.index][0] *= 0.9
+        mesh.coordinates[point.index] *= 1.2
         mesh.coordinates[point.index] += shift
 
     mesh.calculate_point_forces()
@@ -455,6 +458,7 @@ def compression_test(mesh):
 
     ax.plot(foo[:,0],foo[:,1],'ob')
     ax.quiver(foo[:,0],foo[:,1], bar[:,0],bar[:,1])
+    ax.quiver(foo[77,0],foo[77,1], bar[77,0],bar[77,1])
     fig.show()
 
 
@@ -468,11 +472,10 @@ def shear_test(mesh):
     for point in mesh.points:
         shift = np.array([0.5, 0.5])
         mesh.coordinates[point.index] -= shift
-        mesh.coordinates[point.index][0] += mesh.coordinates[point.index][0] + 2*mesh.coordinates[point.index][1]
+        mesh.coordinates[point.index][0] += 0.2*mesh.coordinates[point.index][1]
         mesh.coordinates[point.index] += shift
 
     mesh.calculate_point_forces()
-
 
     X = np.linspace(0, 1, 1000)
     Y = np.linspace(0, 1, 1000)
@@ -486,41 +489,48 @@ def shear_test(mesh):
 
 
 def spread_test(mesh):
+    fig, ax = plt.subplots()
+    ax.plot(mesh.coordinates[:,0],mesh.coordinates[:,1],'or')
     for point in mesh.points:
         shift = np.array([0.5, 0.5])
         mesh.coordinates[point.index] -= shift
-        mesh.coordinates[point.index][0] += mesh.coordinates[point.index][0] + 2*mesh.coordinates[point.index][1]
+        mesh.coordinates[point.index] *= 1.2
         mesh.coordinates[point.index] += shift
 
     mesh.calculate_point_forces()
     X = np.linspace(0, 1, 55)
     Y = np.linspace(0, 1, 55)
     xv, yv = np.meshgrid(X, Y)
-    spread_force = spread(
-        np.sqrt((mesh.forces[:,0])**2 + (mesh.forces[:,1])**2),
+    spread_force_X = spread(
+        mesh.forcesX,
         xv,
         yv,
         mesh.X,
         mesh.Y,
         mesh.dA
     )
-    fig, ax = plt.subplots()
+    spread_force_Y = spread(
+        mesh.forcesX,
+        xv,
+        yv,
+        mesh.X,
+        mesh.Y,
+        mesh.dA
+    )
     X = np.linspace(0, 1, 55)
     Y = np.linspace(0, 1, 55)
     xv, yv = np.meshgrid(X, Y)
-    coordinates = [p.coordinates for p in mesh.points]
-    foo = np.array(coordinates)
-    bar = np.array(mesh.forces)
-    ax.plot(foo[:,0],foo[:,1],'ob')
-    ax.quiver(X,Y, spread_force[:,0],spread_force[:,1])
+    ax.plot(mesh.coordinates[:,0],mesh.coordinates[:,1],'ob')
+    ax.quiver(xv, yv, spread_force_X, spread_force_Y)
     fig.show()
+
 
 
 def run_tests():
     print("Building mesh")
-    points, edges = circle_mesh(0.4, np.array([0.5, 0.5]), h=0.1)
+    points, edges = circle_mesh(0.4, np.array([0.5, 0.5]), h=0.05)
     print("Points and edges determined, building mesh object")
-    for test in [compression_test, shear_test, spread_test]:
+    for test in [spread_test, compression_test, shear_test]:
         mesh = Mesh(points, edges)
         mesh.initialize()
         test(mesh)
@@ -529,4 +539,3 @@ def run_tests():
 
 if __name__ == '__main__':
     run_tests()
-
